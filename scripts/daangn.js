@@ -403,6 +403,40 @@ async function searchDaangn(watch) {
         (watch.daangnRegion ? ` (in=${watch.daangnRegion})` : '') +
         (isNationwide(watch.location) ? ' (전국 검색)' : '')
     );
+    if (watch.daangnRegion) {
+      const cnt = (h, kw) => (h.match(new RegExp(kw, 'g')) || []).length;
+      const regionOf = (arr) => {
+        const m = {};
+        arr.forEach((it) => {
+          const r = (it.region || '-').trim() || '-';
+          m[r] = (m[r] || 0) + 1;
+        });
+        return Object.entries(m)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 6)
+          .map(([r, n]) => `${r}(${n})`)
+          .join(', ');
+      };
+      console.log(
+        `    [DEBUG] in= 검증(WITH): HTML 매탄:${cnt(html, '매탄')} 서초:${cnt(html, '서초')} | 지역분포: ${regionOf(items)}`
+      );
+      // 같은 실행에서 in= 없이도 받아 A/B 비교 → in= 가 서버측에서 먹히는지 판별
+      try {
+        const html2 = await fetchSearchHtml(watch.keyword, null);
+        const items2 = parseItems(html2);
+        console.log(
+          `    [DEBUG] in= 검증(WITHOUT): HTML 매탄:${cnt(html2, '매탄')} 서초:${cnt(html2, '서초')} | 지역분포: ${regionOf(items2)}`
+        );
+        const same =
+          items.length === items2.length &&
+          items.slice(0, 5).every((it, i) => it.url === (items2[i] || {}).url);
+        console.log(
+          `    [DEBUG] in= 결론: 상위매물 ${same ? '동일 → in= 무시됨(지역검색 불가)' : '다름 → in= 반영됨'}`
+        );
+      } catch (e) {
+        console.log(`    [DEBUG] in= 없는 재요청 실패: ${e.message}`);
+      }
+    }
     // 매물 링크가 페이지에 몇 번 등장하는지(파서와 무관한 원자료 신호)
     const rawLinks = (html.match(/\/kr\/buy-sell\//g) || []).length;
     const hasNextData = html.includes('__NEXT_DATA__') || html.includes('__next_f');
