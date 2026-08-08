@@ -348,7 +348,6 @@ function openEdit(index) {
     el.checked = sel.includes(el.value);
   });
   regionPicker.setValue(w.location || '');
-  $('f-daangn-region').value = w.daangnRegion || '';
   $('f-maxprice').value = w.maxPrice !== undefined ? Number(w.maxPrice).toLocaleString('ko-KR') : '';
   $('f-free-share').checked = Number(w.maxPrice) === 0 && w.maxPrice !== undefined;
   $('f-maxprice').disabled = $('f-free-share').checked;
@@ -390,7 +389,6 @@ $('edit-form').addEventListener('submit', (e) => {
       return chosen.length && chosen.length < ALL_SITES.length ? chosen : undefined;
     })(),
     maxPrice: $('f-free-share').checked ? 0 : parseMaxPrice($('f-maxprice').value),
-    daangnRegion: $('f-daangn-region').value.trim() || undefined,
     email: emailsToStore($('f-email').value),
     chatMessage: $('f-msg').value.trim() || undefined,
     enabled: $('f-enabled').checked,

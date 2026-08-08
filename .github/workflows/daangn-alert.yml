@@ -62,6 +62,8 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           MAIL_FROM_NAME: ${{ vars.MAIL_FROM_NAME }}
           CHAT_HELPER_URL: ${{ vars.CHAT_HELPER_URL }}
+          # (선택) 당근 내 동네 매물 수집용 로그인 세션 쿠키. 없으면 당근은 기본지역(서초4동)만.
+          DAANGN_COOKIE: ${{ secrets.DAANGN_COOKIE }}
           # 이슈 등록용 (Actions 가 자동 제공하는 토큰/저장소명)
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}

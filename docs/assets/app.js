@@ -75,8 +75,6 @@ form.addEventListener('submit', (e) => {
   };
   if (maxPrice !== undefined) watch.maxPrice = maxPrice;
   if (sites.length) watch.sites = sites; // 선택한 사이트 명시 (미선택 시 생략 → 기본 전체)
-  const daangnRegion = document.getElementById('daangn-region').value.trim();
-  if (daangnRegion) watch.daangnRegion = daangnRegion; // 당근 내 동네 검색값(in=)
 
   snippetEl.textContent = JSON.stringify(watch, null, 2);
   result.classList.remove('hidden');

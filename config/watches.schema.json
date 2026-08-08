@@ -47,10 +47,6 @@
             "description": "검색할 사이트 키 목록. 미지정이면 전체(당근+중고나라+번개장터).",
             "items": { "type": "string", "enum": ["daangn", "joongna", "bunjang"] }
           },
-          "daangnRegion": {
-            "type": "string",
-            "description": "당근마켓 내 동네 검색용 지역값(당근 웹 URL의 in= 값, 예: '매탄3동-6543'). 지정 시 당근을 그 동네로 검색하고 지역 필터를 대체함."
-          },
           "maxPrice": {
             "type": "number",
             "description": "희망 금액(원). 양수는 해당 금액 '이하', 0은 무료 매물(당근 나눔, 중고나라·번개장터 0원)만 알림. 미지정이면 금액 제한 없음.",

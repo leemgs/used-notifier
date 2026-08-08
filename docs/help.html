@@ -74,17 +74,24 @@
     <section class="card">
       <h2>🥕 당근 "내 동네" 설정 (중요)</h2>
       <p class="hint" style="font-size:14px;">
-        당근마켓 웹 검색은 위치 인식이 안 돼 <b>기본 지역(서초동)</b> 결과만 나옵니다.
-        내 동네(예: 매탄동) 매물을 받으려면 감시 항목에 <b>당근 지역값</b>을 넣어주세요.
+        ⚠️ 당근마켓 웹 검색은 <b>비로그인 상태에서는 위치를 인식하지 못해</b> 항상 <b>기본 지역(서초4동)</b> 결과만 돌려줍니다.
+        (URL의 <code>?in=</code> 파라미터는 서버에서 무시됨 — 실측 확인.) 즉 내 동네(예: 매탄동) 매물은 웹 검색 결과에 아예 나오지 않습니다.
+      </p>
+      <p class="hint" style="font-size:14px;">
+        내 동네 당근 매물을 받으려면 <b>로그인 세션 쿠키</b>가 필요합니다. 아래처럼 <code>DAANGN_COOKIE</code> 시크릿을 등록하면
+        그 계정의 동네로 검색해 앱에서 보는 것과 같은 결과를 받습니다.
       </p>
       <ol class="secrets">
-        <li>PC/모바일 브라우저에서 <a href="https://www.daangn.com/kr/buy-sell/" target="_blank" rel="noopener">daangn.com</a> 접속</li>
-        <li>왼쪽 위 <b>지역</b>을 내 동네로 변경(예: 매탄3동)하고 아무거나 검색</li>
-        <li>주소창 URL의 <code>in=</code> 뒤 값을 복사 — 예: <code>…?in=<b>매탄3동-6543</b>&search=…</code></li>
-        <li>감시 항목의 <b>당근 내 동네</b> 칸에 <code>매탄3동-6543</code> 을 붙여넣기</li>
+        <li>PC 브라우저에서 <a href="https://www.daangn.com/kr/buy-sell/" target="_blank" rel="noopener">daangn.com</a> 에 <b>로그인</b>하고 내 동네가 매탄동으로 설정됐는지 확인</li>
+        <li><b>개발자도구(F12) → Network</b> 탭에서 <code>buy-sell</code> 요청을 클릭 → <b>Request Headers</b> 의 <code>cookie:</code> 값 전체를 복사</li>
+        <li>저장소 <b>Settings → Secrets and variables → Actions → Secrets</b> 탭에서 <code>DAANGN_COOKIE</code> = 복사한 쿠키값 등록</li>
+        <li>쿠키가 있으면 당근 검색이 그 계정 동네로 한정되며, 지역 텍스트 필터는 자동으로 건너뜁니다.</li>
       </ol>
-      <p class="hint">이 값이 있으면 당근을 그 동네로 검색하므로 지역 필터를 대신합니다(앱에서 보는 것과 동일).
-        중고나라·번개장터는 지역 필드가 정확해 이 설정이 필요 없습니다.</p>
+      <p class="hint">
+        ⚠️ 쿠키는 <b>민감정보</b>이며 로그아웃/일정 기간 후 만료됩니다. 만료되면 다시 발급해 갱신하세요.
+        쿠키를 등록하지 않으면 당근은 서초4동 결과만 나오므로, 다른 지역 감시 항목에서는 당근이 매물을 못 찾을 수 있습니다 —
+        이때는 지역 데이터가 정확한 <b>🟢 중고나라·⚡ 번개장터</b>가 내 동네(수원·매탄동 등) 매물을 담당합니다.
+      </p>
     </section>
 
     <section class="card">

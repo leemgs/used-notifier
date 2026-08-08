@@ -39,23 +39,23 @@ const USER_AGENT =
  * @param {string} keyword
  * @returns {Promise<string>} HTML 문자열
  */
-async function fetchSearchHtml(keyword, region) {
+async function fetchSearchHtml(keyword) {
   const template = process.env.DAANGN_SEARCH_URL || DEFAULT_SEARCH_URL;
-  let url = template.replace('{kw}', encodeURIComponent(keyword));
-  // 당근 웹 검색은 위치 인식이 안 돼 기본 지역(서초동) 결과만 준다.
-  // watch.daangnRegion(예: "매탄3동-6543")을 in= 파라미터로 넣어 내 동네로 검색한다.
-  if (region) {
-    url += (url.includes('?') ? '&' : '?') + 'in=' + encodeURIComponent(region);
-  }
+  const url = template.replace('{kw}', encodeURIComponent(keyword));
 
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': USER_AGENT,
-      Accept:
-        'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-      'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
-    },
-  });
+  // 당근 웹 검색은 비로그인 시 지역을 인식하지 못해 기본 지역(서초4동) 결과만 준다.
+  // (?in= 파라미터는 SSR 에서 무시됨 — 실측으로 확인.)
+  // 내 동네 매물을 받으려면 로그인 세션 쿠키가 필요하다. DAANGN_COOKIE 시크릿이 있으면
+  // 브라우저에서 복사한 Cookie 헤더를 그대로 실어 보내 그 계정의 동네로 검색한다.
+  const headers = {
+    'User-Agent': USER_AGENT,
+    Accept:
+      'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
+  };
+  if (process.env.DAANGN_COOKIE) headers.Cookie = process.env.DAANGN_COOKIE;
+
+  const res = await fetch(url, { headers });
 
   if (!res.ok) {
     throw new Error(`당근마켓 검색 요청 실패: HTTP ${res.status} (${url})`);
@@ -364,7 +364,7 @@ function matchesWatch(item, watch, opts) {
   if (!isGenericFreeKeyword(watch) && !keywordMatches(item.title, watch.keyword)) return false;
   if (!priceWithinMax(item, watch)) return false;
 
-  // 검색 자체가 특정 동네로 스코프된 경우(당근 in= 지역검색) 지역 필터를 건너뛴다.
+  // 검색 자체가 특정 동네로 스코프된 경우(당근 로그인 쿠키 지역검색) 지역 필터를 건너뛴다.
   if (opts && opts.skipLocation) return true;
 
   if (isNationwide(watch.location)) return true; // 지역 미입력 → 전국
@@ -391,52 +391,19 @@ function matchesWatch(item, watch, opts) {
  * @returns {Promise<Array>} 조건을 만족하는 매물 목록
  */
 async function searchDaangn(watch) {
-  const html = await fetchSearchHtml(watch.keyword, watch.daangnRegion);
+  const html = await fetchSearchHtml(watch.keyword);
   const items = parseItems(html);
-  // daangnRegion 이 있으면 검색이 이미 해당 동네로 한정되므로 지역 필터를 건너뛴다.
-  const skipLocation = !!watch.daangnRegion;
+  // DAANGN_COOKIE 가 있으면 검색이 그 계정의 동네로 한정되므로 지역 텍스트 필터를 건너뛴다.
+  // (쿠키가 없으면 결과가 기본 지역(서초4동)뿐이라 지역 필터가 그대로 걸러낸다.)
+  const skipLocation = !!process.env.DAANGN_COOKIE;
   const matched = items.filter((it) => matchesWatch(it, watch, { skipLocation }));
 
   if (process.env.DEBUG === 'true') {
     console.log(
       `    [DEBUG] HTML ${html.length}자, 파싱된 매물 ${items.length}건, 매칭 ${matched.length}건` +
-        (watch.daangnRegion ? ` (in=${watch.daangnRegion})` : '') +
+        (process.env.DAANGN_COOKIE ? ' (쿠키 지역검색)' : ' (비로그인·기본지역)') +
         (isNationwide(watch.location) ? ' (전국 검색)' : '')
     );
-    if (watch.daangnRegion) {
-      const cnt = (h, kw) => (h.match(new RegExp(kw, 'g')) || []).length;
-      const regionOf = (arr) => {
-        const m = {};
-        arr.forEach((it) => {
-          const r = (it.region || '-').trim() || '-';
-          m[r] = (m[r] || 0) + 1;
-        });
-        return Object.entries(m)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 6)
-          .map(([r, n]) => `${r}(${n})`)
-          .join(', ');
-      };
-      console.log(
-        `    [DEBUG] in= 검증(WITH): HTML 매탄:${cnt(html, '매탄')} 서초:${cnt(html, '서초')} | 지역분포: ${regionOf(items)}`
-      );
-      // 같은 실행에서 in= 없이도 받아 A/B 비교 → in= 가 서버측에서 먹히는지 판별
-      try {
-        const html2 = await fetchSearchHtml(watch.keyword, null);
-        const items2 = parseItems(html2);
-        console.log(
-          `    [DEBUG] in= 검증(WITHOUT): HTML 매탄:${cnt(html2, '매탄')} 서초:${cnt(html2, '서초')} | 지역분포: ${regionOf(items2)}`
-        );
-        const same =
-          items.length === items2.length &&
-          items.slice(0, 5).every((it, i) => it.url === (items2[i] || {}).url);
-        console.log(
-          `    [DEBUG] in= 결론: 상위매물 ${same ? '동일 → in= 무시됨(지역검색 불가)' : '다름 → in= 반영됨'}`
-        );
-      } catch (e) {
-        console.log(`    [DEBUG] in= 없는 재요청 실패: ${e.message}`);
-      }
-    }
     // 매물 링크가 페이지에 몇 번 등장하는지(파서와 무관한 원자료 신호)
     const rawLinks = (html.match(/\/kr\/buy-sell\//g) || []).length;
     const hasNextData = html.includes('__NEXT_DATA__') || html.includes('__next_f');
