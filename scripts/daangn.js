@@ -25,7 +25,7 @@ const { formatPrice, parsePriceValue } = require('./price');
 
 // 검색 URL 템플릿. {kw} 는 URL 인코딩된 키워드로 치환된다.
 // 환경변수 DAANGN_SEARCH_URL 로 재정의 가능.
-const DEFAULT_SEARCH_URL = 'https://www.daangn.com/kr/buy-sell/?search={kw}';
+const DEFAULT_SEARCH_URL = 'https://www.daangn.com/kr/buy-sell/s/?search={kw}';
 
 // 매물 상세 페이지의 기본 도메인 (상대경로 -> 절대경로 변환용)
 const BASE_URL = 'https://www.daangn.com';
@@ -39,9 +39,15 @@ const USER_AGENT =
  * @param {string} keyword
  * @returns {Promise<string>} HTML 문자열
  */
-async function fetchSearchHtml(keyword) {
+function buildSearchUrl(keyword, region) {
   const template = process.env.DAANGN_SEARCH_URL || DEFAULT_SEARCH_URL;
-  const url = template.replace('{kw}', encodeURIComponent(keyword));
+  let url = template.replaceAll('{kw}', encodeURIComponent(keyword));
+  if (region) url += `${url.includes('?') ? '&' : '?'}in=${encodeURIComponent(region)}`;
+  return url;
+}
+
+async function fetchSearchHtml(keyword, region) {
+  const url = buildSearchUrl(keyword, region);
 
   // 당근 웹 검색은 비로그인 시 지역을 인식하지 못해 기본 지역(서초4동) 결과만 준다.
   // (?in= 파라미터는 SSR 에서 무시됨 — 실측으로 확인.)
@@ -391,17 +397,18 @@ function matchesWatch(item, watch, opts) {
  * @returns {Promise<Array>} 조건을 만족하는 매물 목록
  */
 async function searchDaangn(watch) {
-  const html = await fetchSearchHtml(watch.keyword);
+  const html = await fetchSearchHtml(watch.keyword, watch.daangnRegion);
   const items = parseItems(html);
   // DAANGN_COOKIE 가 있으면 검색이 그 계정의 동네로 한정되므로 지역 텍스트 필터를 건너뛴다.
   // (쿠키가 없으면 결과가 기본 지역(서초4동)뿐이라 지역 필터가 그대로 걸러낸다.)
-  const skipLocation = !!process.env.DAANGN_COOKIE;
+  const skipLocation = !!watch.daangnRegion || !!process.env.DAANGN_COOKIE;
   const matched = items.filter((it) => matchesWatch(it, watch, { skipLocation }));
 
   if (process.env.DEBUG === 'true') {
     console.log(
       `    [DEBUG] HTML ${html.length}자, 파싱된 매물 ${items.length}건, 매칭 ${matched.length}건` +
-        (process.env.DAANGN_COOKIE ? ' (쿠키 지역검색)' : ' (비로그인·기본지역)') +
+        (watch.daangnRegion ? ` (in=${watch.daangnRegion})` : '') +
+        (process.env.DAANGN_COOKIE ? ' (로그인 쿠키)' : '') +
         (isNationwide(watch.location) ? ' (전국 검색)' : '')
     );
     // 매물 링크가 페이지에 몇 번 등장하는지(파서와 무관한 원자료 신호)
@@ -526,6 +533,7 @@ function pickImage(inner) {
 }
 
 module.exports = {
+  buildSearchUrl,
   fetchSearchHtml,
   parseItems,
   matchesWatch,

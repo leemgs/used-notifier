@@ -42,6 +42,10 @@
             "type": "string",
             "description": "구매 가능 지역 (매물 지역/제목에 포함되면 매칭). 예: 수원시"
           },
+          "daangnRegion": {
+            "type": "string",
+            "description": "당근 검색 URL의 in 파라미터 값. 예: 매탄동-4535"
+          },
           "sites": {
             "type": "array",
             "description": "검색할 사이트 키 목록. 미지정이면 전체(당근+중고나라+번개장터).",

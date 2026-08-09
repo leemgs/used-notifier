@@ -208,13 +208,14 @@ flowchart TD
 > 워크플로는 `vars.GMAIL_USER` 를 먼저 읽고 없으면 `secrets.GMAIL_USER` 로 폴백하므로,
 > 둘 중 **어느 쪽에 등록해도** 동작합니다. `GMAIL_APP_PASSWORD` 는 반드시 **Secrets** 에 두세요.
 
-#### 🥕 당근 "내 동네" 매물 받기 (`DAANGN_COOKIE`)
+#### 🥕 당근 "내 동네" 매물 받기
 
-당근마켓 웹 검색은 **비로그인 상태에서는 위치를 인식하지 못해** 항상 **기본 지역(서초4동)**
-결과만 돌려줍니다. (URL의 `?in=` 파라미터는 서버에서 무시됨 — 실측 확인.) 즉 내 동네(예: 매탄동)
-매물은 웹 검색 결과에 아예 나오지 않습니다.
+감시 항목의 `daangnRegion`에 당근 검색 URL의 `in=` 값을 지정하세요. 예를 들어
+`...?in=매탄동-4535&search=화분`이라면 `"daangnRegion": "매탄동-4535"`로 저장합니다.
+검색기는 최신 `/kr/buy-sell/s/` 경로에 이 값을 전달합니다. 이전 경로(`/kr/buy-sell/`)에서
+`in=`이 무시된다는 진단 때문에 동네 매물을 놓치던 문제를 수정했습니다.
 
-내 동네 당근 매물을 받으려면 **로그인 세션 쿠키**를 `DAANGN_COOKIE` **Secret** 으로 등록하세요.
+로그인이 필요한 검색 결과라면 **로그인 세션 쿠키**를 `DAANGN_COOKIE` **Secret** 으로 추가할 수도 있습니다.
 
 1. PC 브라우저에서 [daangn.com](https://www.daangn.com/kr/buy-sell/) 에 **로그인**하고 내 동네를 확인
 2. **개발자도구(F12) → Network** 에서 `buy-sell` 요청 클릭 → **Request Headers** 의 `cookie:` 값 전체 복사

@@ -348,6 +348,7 @@ function openEdit(index) {
     el.checked = sel.includes(el.value);
   });
   regionPicker.setValue(w.location || '');
+  $('f-daangn-region').value = w.daangnRegion || '';
   $('f-maxprice').value = w.maxPrice !== undefined ? Number(w.maxPrice).toLocaleString('ko-KR') : '';
   $('f-free-share').checked = Number(w.maxPrice) === 0 && w.maxPrice !== undefined;
   $('f-maxprice').disabled = $('f-free-share').checked;
@@ -383,6 +384,7 @@ $('edit-form').addEventListener('submit', (e) => {
     id: slugId(keyword, location),
     keyword,
     location,
+    daangnRegion: $('f-daangn-region').value.trim() || undefined,
     sites: (function () {
       const chosen = Array.from(document.querySelectorAll('input[name="f-site"]:checked')).map((el) => el.value);
       // 전체(또는 미선택)면 생략 → 기본 전체. 일부만 선택 시 명시.

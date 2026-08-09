@@ -70,6 +70,7 @@ form.addEventListener('submit', (e) => {
     id: makeId(keyword, location),
     keyword,
     location,
+    daangnRegion: document.getElementById('daangn-region').value.trim() || undefined,
     email,
     enabled: true,
   };
