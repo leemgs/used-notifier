@@ -70,10 +70,10 @@ test('무료 모드의 나눔 키워드는 제품명과 무관하게 무료 품�
   assert.equal(matchesWatch({ title: '벽돌', priceValue: 10000 }, watch), false);
 });
 
-test('당근 매탄동 검색은 최신 /s/ 경로와 in 파라미터를 사용한다', () => {
+test('당근 매탄동 검색은 파싱 가능한 검색 경로와 in 파라미터를 사용한다', () => {
   assert.equal(
     buildSearchUrl('화분', '매탄동-4535'),
-    'https://www.daangn.com/kr/buy-sell/s/?search=%ED%99%94%EB%B6%84&in=%EB%A7%A4%ED%83%84%EB%8F%99-4535'
+    'https://www.daangn.com/kr/buy-sell/?search=%ED%99%94%EB%B6%84&in=%EB%A7%A4%ED%83%84%EB%8F%99-4535'
   );
 });
 
