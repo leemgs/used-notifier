@@ -418,32 +418,47 @@ async function searchDaangn(watch) {
       // 파싱 0건이면 페이지 앞부분을 덤프해 차단/리다이렉트/JS쉘 여부 확인
       const snippet = html.replace(/\s+/g, ' ').slice(0, 400);
       console.log(`    [DEBUG] HTML 앞부분: ${snippet}`);
-      // [PROBE3] 당근 데이터 엔드포인트 탐색 (Remix single-fetch .data 등)
+      // [PROBE4] _data 엔드포인트 전체 구조 덤프 → 매물 배열 위치 파악
       const kw = encodeURIComponent(watch.keyword);
       const rg = encodeURIComponent(watch.daangnRegion || '');
-      const candidates = [
-        `https://www.daangn.com/kr/buy-sell/s.data?search=${kw}&in=${rg}`,
-        `https://www.daangn.com/kr/buy-sell/s/.data?search=${kw}&in=${rg}`,
-        `https://www.daangn.com/kr/buy-sell/s/?search=${kw}&in=${rg}&_data=routes%2Fkr.buy-sell.s`,
-        `https://www.daangn.com/api/v1/search/buy_sell?search=${kw}`,
-      ];
-      for (const url of candidates) {
+      const dataUrl = `https://www.daangn.com/kr/buy-sell/s/?search=${kw}&in=${rg}&_data=routes%2Fkr.buy-sell.s`;
+      try {
+        const r = await fetch(dataUrl, {
+          headers: { 'User-Agent': USER_AGENT, Accept: 'application/json', 'Accept-Language': 'ko-KR,ko;q=0.9' },
+        });
+        const body = await r.text();
+        console.log(`    [PROBE4] ${r.status} len=${body.length}`);
+        let json;
         try {
-          const r = await fetch(url, {
-            headers: {
-              'User-Agent': USER_AGENT,
-              Accept: 'application/json, text/x-script; q=0.9, */*;q=0.8',
-              'Accept-Language': 'ko-KR,ko;q=0.9',
-            },
-          });
-          const ct = r.headers.get('content-type') || '';
-          const body = await r.text();
-          const head = body.replace(/\s+/g, ' ').slice(0, 180);
-          console.log(`    [PROBE3] ${r.status} len=${body.length} ct=${ct.slice(0, 40)} :: ${url.slice(40)}`);
-          console.log(`    [PROBE3]   head=${head}`);
-        } catch (e) {
-          console.log(`    [PROBE3] ERR ${e.message} :: ${url.slice(40)}`);
+          json = JSON.parse(body);
+        } catch (_) {
+          console.log(`    [PROBE4] JSON 파싱 실패, 본문: ${body.slice(0, 500)}`);
+          json = null;
         }
+        if (json) {
+          console.log(`    [PROBE4] top keys: ${Object.keys(json).join(', ')}`);
+          // 재귀로 객체배열(길이>=1, 원소가 name/title 보유) 찾기
+          const hits = [];
+          const walk = (node, path, depth) => {
+            if (!node || depth > 5 || hits.length >= 6) return;
+            if (Array.isArray(node)) {
+              if (node.length && typeof node[0] === 'object' && node[0]) {
+                const k = Object.keys(node[0]);
+                if (k.some((x) => /name|title|price|content/i.test(x))) {
+                  hits.push({ path, len: node.length, keys: k.slice(0, 14) });
+                }
+              }
+              node.slice(0, 3).forEach((v, i) => walk(v, `${path}[${i}]`, depth + 1));
+            } else if (typeof node === 'object') {
+              for (const key of Object.keys(node)) walk(node[key], `${path}.${key}`, depth + 1);
+            }
+          };
+          walk(json, '$', 0);
+          hits.forEach((h) => console.log(`    [PROBE4] 배열 ${h.path} (len=${h.len}) keys=${h.keys.join(',')}`));
+          if (!hits.length) console.log(`    [PROBE4] 매물배열 못찾음. 본문앞부분: ${body.slice(0, 600)}`);
+        }
+      } catch (e) {
+        console.log(`    [PROBE4] ERR ${e.message}`);
       }
     }
     items.slice(0, 5).forEach((it) =>
