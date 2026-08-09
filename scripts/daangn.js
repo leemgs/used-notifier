@@ -418,6 +418,32 @@ async function searchDaangn(watch) {
       // 파싱 0건이면 페이지 앞부분을 덤프해 차단/리다이렉트/JS쉘 여부 확인
       const snippet = html.replace(/\s+/g, ' ').slice(0, 400);
       console.log(`    [DEBUG] HTML 앞부분: ${snippet}`);
+      // [PROBE] /s/ 페이지의 데이터 소스 탐색: 프레임워크 마커 + API/데이터 URL
+      const markers = [
+        '__remixContext',
+        '__remix',
+        'routeModules',
+        'window.__NUXT',
+        'window.__APOLLO',
+        'graphql',
+        '_data=',
+        'application/json',
+        'productId',
+        'articleId',
+        'flea-market',
+        'searchResult',
+      ].filter((k) => html.includes(k));
+      console.log(`    [PROBE] 마커: ${markers.join(', ') || '(없음)'}`);
+      const urls = Array.from(
+        new Set(
+          (html.match(/https?:\/\/[^"'\s<>]{0,120}(?:api|graphql|_data|search|bff)[^"'\s<>]{0,80}/gi) || [])
+        )
+      ).slice(0, 12);
+      console.log(`    [PROBE] URL 후보(${urls.length}):`);
+      urls.forEach((u) => console.log(`    [PROBE]   ${u}`));
+      // application/json 스크립트 블록의 앞부분(있으면 loader 데이터일 가능성)
+      const jsonScript = html.match(/<script[^>]*type="application\/json"[^>]*>([\s\S]{0,300})/i);
+      if (jsonScript) console.log(`    [PROBE] json script: ${jsonScript[1].replace(/\s+/g, ' ')}`);
     }
     items.slice(0, 5).forEach((it) =>
       console.log(`    [DEBUG] · ${it.title || '(제목없음)'} | ${it.region || '-'} | ${it.url}`)
