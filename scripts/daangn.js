@@ -24,11 +24,12 @@ try {
 const { formatPrice, parsePriceValue } = require('./price');
 
 // 검색 URL 템플릿. {kw} 는 URL 인코딩된 키워드로 치환된다.
-// 참고: 신형 검색 경로(/kr/buy-sell/s/)는 지역(in=)을 반영하지만 결과가
-//   클라이언트 렌더링 + PoW(봇 차단)로 보호돼 서버측 파싱이 불가하다(실측 확인).
-//   그래서 파싱 가능한 기존 경로(/kr/buy-sell/)를 기본값으로 쓴다. 이 경로는
-//   비로그인 시 기본지역(서초4동) 결과만 주므로, 내 동네 결과가 필요하면
-//   DAANGN_COOKIE(로그인 세션)를 등록한다. 환경변수 DAANGN_SEARCH_URL 로 재정의 가능.
+// 기존 경로(/kr/buy-sell/)는 SSR 로 매물 데이터를 실어주어 서버측 파싱이 가능하며,
+//   in=<지역코드>(예: 매탄동-4535)를 붙이면 그 동네로 검색된다(로그인 불필요, 실측 확인).
+//   지역코드 없이 호출하면 기본지역(서초4동) 결과가 나온다.
+// 참고: 신형 경로(/kr/buy-sell/s/)도 in= 를 반영하지만 결과가 클라이언트 렌더링 +
+//   PoW(봇 차단)로 보호돼 서버측 파싱이 불가하므로 사용하지 않는다.
+// 환경변수 DAANGN_SEARCH_URL 로 재정의 가능.
 const DEFAULT_SEARCH_URL = 'https://www.daangn.com/kr/buy-sell/?search={kw}';
 
 // 매물 상세 페이지의 기본 도메인 (상대경로 -> 절대경로 변환용)
@@ -401,15 +402,17 @@ function matchesWatch(item, watch, opts) {
 async function searchDaangn(watch) {
   const html = await fetchSearchHtml(watch.keyword, watch.daangnRegion);
   const items = parseItems(html);
-  // 로그인 쿠키가 있을 때만 검색이 그 계정 동네로 한정되므로 지역 텍스트 필터를 건너뛴다.
-  // (쿠키가 없으면 기본지역(서초4동) 결과뿐이라, 지역 필터로 걸러 오알림을 막는다.)
-  const skipLocation = !!process.env.DAANGN_COOKIE;
+  // daangnRegion(in= 값) 또는 로그인 쿠키가 있으면 검색이 이미 그 동네로 한정되므로
+  // 카드의 불완전한 지역 텍스트로 재차 거르지 않는다. (없으면 기본지역(서초4동) 결과라
+  // 지역 필터로 걸러 오알림을 막는다.)
+  const skipLocation = !!watch.daangnRegion || !!process.env.DAANGN_COOKIE;
   const matched = items.filter((it) => matchesWatch(it, watch, { skipLocation }));
 
   if (process.env.DEBUG === 'true') {
     console.log(
       `    [DEBUG] HTML ${html.length}자, 파싱된 매물 ${items.length}건, 매칭 ${matched.length}건` +
-        (process.env.DAANGN_COOKIE ? ' (로그인 쿠키)' : ' (비로그인·기본지역)') +
+        (watch.daangnRegion ? ` (in=${watch.daangnRegion} 지역검색)` : '') +
+        (process.env.DAANGN_COOKIE ? ' (로그인 쿠키)' : '') +
         (isNationwide(watch.location) ? ' (전국 검색)' : '')
     );
     // 매물 링크가 페이지에 몇 번 등장하는지(파서와 무관한 원자료 신호)
