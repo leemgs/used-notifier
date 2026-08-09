@@ -49,10 +49,8 @@ function buildSearchUrl(keyword, region) {
 async function fetchSearchHtml(keyword, region) {
   const url = buildSearchUrl(keyword, region);
 
-  // 당근 웹 검색은 비로그인 시 지역을 인식하지 못해 기본 지역(서초4동) 결과만 준다.
-  // (?in= 파라미터는 SSR 에서 무시됨 — 실측으로 확인.)
-  // 내 동네 매물을 받으려면 로그인 세션 쿠키가 필요하다. DAANGN_COOKIE 시크릿이 있으면
-  // 브라우저에서 복사한 Cookie 헤더를 그대로 실어 보내 그 계정의 동네로 검색한다.
+  // /s/ 검색의 in=으로 동네를 지정하고, 로그인 전용 결과가 필요한 경우에는
+  // DAANGN_COOKIE 시크릿의 브라우저 세션도 함께 전달한다.
   const headers = {
     'User-Agent': USER_AGENT,
     Accept:
@@ -399,8 +397,7 @@ function matchesWatch(item, watch, opts) {
 async function searchDaangn(watch) {
   const html = await fetchSearchHtml(watch.keyword, watch.daangnRegion);
   const items = parseItems(html);
-  // DAANGN_COOKIE 가 있으면 검색이 그 계정의 동네로 한정되므로 지역 텍스트 필터를 건너뛴다.
-  // (쿠키가 없으면 결과가 기본 지역(서초4동)뿐이라 지역 필터가 그대로 걸러낸다.)
+  // in= 또는 로그인 쿠키로 검색 범위가 이미 지정됐으면 카드의 불완전한 지역 텍스트로 재차 제외하지 않는다.
   const skipLocation = !!watch.daangnRegion || !!process.env.DAANGN_COOKIE;
   const matched = items.filter((it) => matchesWatch(it, watch, { skipLocation }));
 
