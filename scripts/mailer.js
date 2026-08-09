@@ -13,6 +13,8 @@ const nodemailer = require('nodemailer');
 const { chatHelperLink } = require('./links');
 const { themeFor } = require('./theme');
 
+const DASHBOARD_URL = 'https://leemgs.github.io/used-notifier/';
+
 function createTransport() {
   const user = process.env.GMAIL_USER;
   const pass = process.env.GMAIL_APP_PASSWORD;
@@ -72,6 +74,8 @@ function buildText(watch, items, message, site, theme) {
   });
   lines.push(`인사말: "${message}"`);
   lines.push('모바일에서 "빠른 채팅" 링크를 눌러 인사말을 복사한 뒤, 매물에서 "채팅하기"에 붙여넣으세요.');
+  lines.push('');
+  lines.push(`중고 알리미 대시보드: ${DASHBOARD_URL}`);
   return lines.join('\n');
 }
 
@@ -138,6 +142,17 @@ function buildHtml(watch, items, message, site, theme) {
         (계정 보호 및 각 사이트 이용약관 준수를 위해 전송은 직접 완료합니다.)<br>
         이 메일은 GitHub Actions 자동 알림으로 발송되었습니다.
       </p>
+      </div>
+      <div style="padding:18px 24px;background:#f8fafc;border-top:1px solid #e9edf2;text-align:center;">
+        <p style="margin:0 0 10px;color:#64748b;font-size:12px;line-height:1.5;">
+          감시 목록과 최근 매물을 한곳에서 확인하세요.
+        </p>
+        <a href="${DASHBOARD_URL}" style="display:inline-block;padding:10px 18px;border-radius:8px;background:${t.dark};color:#fff;font-size:13px;font-weight:700;text-decoration:none;">
+          🔔 중고 알리미 대시보드 열기
+        </a>
+        <div style="margin-top:9px;font-size:11px;line-height:1.4;">
+          <a href="${DASHBOARD_URL}" style="color:#8491a3;text-decoration:underline;word-break:break-all;">${DASHBOARD_URL}</a>
+        </div>
       </div>
     </div>
   </div>

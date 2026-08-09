@@ -6,6 +6,7 @@ const { formatPrice } = require('../price');
 const { buildSearchUrl, matchesWatch, parseItems: parseDaangn } = require('../daangn');
 const { parseItems: parseJoongna } = require('../joongna');
 const { parseItems: parseBunjang } = require('../bunjang');
+const { buildHtml, buildText } = require('../mailer');
 
 test('0원 감시는 무료 매물만 매칭한다', () => {
   const watch = { keyword: '의자', location: '', maxPrice: 0 };
@@ -80,4 +81,17 @@ test('지역 검색된 매탄동 화분 무료나눔은 가격 조건에 일치�
   const item = { title: '화분 무료나눔', region: '', priceValue: 0 };
   const watch = { keyword: '화분', location: '매탄동', maxPrice: 0 };
   assert.equal(matchesWatch(item, watch, { skipLocation: true }), true);
+});
+
+test('알림 이메일 하단에 중고 알리미 대시보드 링크를 표시한다', () => {
+  const watch = { keyword: '화분', location: '매탄동' };
+  const items = [{ id: 'item1', title: '화분 나눔', url: 'https://example.com/item1' }];
+  const dashboard = 'https://leemgs.github.io/used-notifier/';
+
+  const html = buildHtml(watch, items, '구매 가능할까요?', '당근마켓');
+  const text = buildText(watch, items, '구매 가능할까요?', '당근마켓', { key: 'daangn' });
+
+  assert.match(html, new RegExp(`href="${dashboard}"`));
+  assert.match(html, /중고 알리미 대시보드 열기/);
+  assert.match(text, new RegExp(`중고 알리미 대시보드: ${dashboard}`));
 });
