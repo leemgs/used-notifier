@@ -34,9 +34,10 @@
       "enabled": false
     },
     {
-      "id": "테이블-경기도",
+      "id": "테이블-수원시영통구",
       "keyword": "테이블",
-      "location": "경기도",
+      "location": "수원시영통구",
+      "daangnRegion": "영통구",
       "maxPrice": 0,
       "email": "leemgs@gmail.com",
       "enabled": true
@@ -45,13 +46,10 @@
       "id": "화분-경기도",
       "keyword": "화분",
       "location": "경기도",
-      "sites": [
-        "daangn"
-      ],
+      "daangnRegion": "영통구",
       "maxPrice": 0,
       "email": "leemgs@gmail.com",
-      "enabled": true,
-      "daangnRegion": "매탄동-4535"
+      "enabled": true
     }
   ]
 }
