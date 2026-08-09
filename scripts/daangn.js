@@ -24,8 +24,12 @@ try {
 const { formatPrice, parsePriceValue } = require('./price');
 
 // 검색 URL 템플릿. {kw} 는 URL 인코딩된 키워드로 치환된다.
-// 환경변수 DAANGN_SEARCH_URL 로 재정의 가능.
-const DEFAULT_SEARCH_URL = 'https://www.daangn.com/kr/buy-sell/s/?search={kw}';
+// 참고: 신형 검색 경로(/kr/buy-sell/s/)는 지역(in=)을 반영하지만 결과가
+//   클라이언트 렌더링 + PoW(봇 차단)로 보호돼 서버측 파싱이 불가하다(실측 확인).
+//   그래서 파싱 가능한 기존 경로(/kr/buy-sell/)를 기본값으로 쓴다. 이 경로는
+//   비로그인 시 기본지역(서초4동) 결과만 주므로, 내 동네 결과가 필요하면
+//   DAANGN_COOKIE(로그인 세션)를 등록한다. 환경변수 DAANGN_SEARCH_URL 로 재정의 가능.
+const DEFAULT_SEARCH_URL = 'https://www.daangn.com/kr/buy-sell/?search={kw}';
 
 // 매물 상세 페이지의 기본 도메인 (상대경로 -> 절대경로 변환용)
 const BASE_URL = 'https://www.daangn.com';
@@ -397,15 +401,15 @@ function matchesWatch(item, watch, opts) {
 async function searchDaangn(watch) {
   const html = await fetchSearchHtml(watch.keyword, watch.daangnRegion);
   const items = parseItems(html);
-  // in= 또는 로그인 쿠키로 검색 범위가 이미 지정됐으면 카드의 불완전한 지역 텍스트로 재차 제외하지 않는다.
-  const skipLocation = !!watch.daangnRegion || !!process.env.DAANGN_COOKIE;
+  // 로그인 쿠키가 있을 때만 검색이 그 계정 동네로 한정되므로 지역 텍스트 필터를 건너뛴다.
+  // (쿠키가 없으면 기본지역(서초4동) 결과뿐이라, 지역 필터로 걸러 오알림을 막는다.)
+  const skipLocation = !!process.env.DAANGN_COOKIE;
   const matched = items.filter((it) => matchesWatch(it, watch, { skipLocation }));
 
   if (process.env.DEBUG === 'true') {
     console.log(
       `    [DEBUG] HTML ${html.length}자, 파싱된 매물 ${items.length}건, 매칭 ${matched.length}건` +
-        (watch.daangnRegion ? ` (in=${watch.daangnRegion})` : '') +
-        (process.env.DAANGN_COOKIE ? ' (로그인 쿠키)' : '') +
+        (process.env.DAANGN_COOKIE ? ' (로그인 쿠키)' : ' (비로그인·기본지역)') +
         (isNationwide(watch.location) ? ' (전국 검색)' : '')
     );
     // 매물 링크가 페이지에 몇 번 등장하는지(파서와 무관한 원자료 신호)
@@ -418,58 +422,6 @@ async function searchDaangn(watch) {
       // 파싱 0건이면 페이지 앞부분을 덤프해 차단/리다이렉트/JS쉘 여부 확인
       const snippet = html.replace(/\s+/g, ' ').slice(0, 400);
       console.log(`    [DEBUG] HTML 앞부분: ${snippet}`);
-      // [PROBE5] 페이지 HTML에서 route id 추출 + 각 후보 _data 에 매물 배열 있는지 검사
-      const kw = encodeURIComponent(watch.keyword);
-      const rg = encodeURIComponent(watch.daangnRegion || '');
-      const routeIds = Array.from(
-        new Set((html.match(/routes\/kr\.buy-sell[A-Za-z0-9._-]*/g) || []))
-      );
-      console.log(`    [PROBE5] HTML route id(${routeIds.length}): ${routeIds.join(' ') || '(없음)'}`);
-      const tryIds = Array.from(new Set([...routeIds, 'routes/kr.buy-sell.s._index', 'routes/kr.buy-sell.s.index']));
-      const findArrays = (json) => {
-        const hits = [];
-        const walk = (node, path, depth) => {
-          if (!node || depth > 6 || hits.length >= 8) return;
-          if (Array.isArray(node)) {
-            if (node.length && node[0] && typeof node[0] === 'object') {
-              const k = Object.keys(node[0]);
-              if (k.some((x) => /name|title|price|content|subject|article/i.test(x)))
-                hits.push({ path, len: node.length, keys: k.slice(0, 16) });
-            }
-            node.slice(0, 2).forEach((v, i) => walk(v, `${path}[${i}]`, depth + 1));
-          } else if (typeof node === 'object') {
-            for (const key of Object.keys(node)) walk(node[key], `${path}.${key}`, depth + 1);
-          }
-        };
-        walk(json, '$', 0);
-        return hits;
-      };
-      void tryIds;
-      void findArrays;
-      // [PROBE6] allPage / pow 내용 + 보호된 leaf 응답 확인
-      try {
-        const u = `https://www.daangn.com/kr/buy-sell/s/?search=${kw}&in=${rg}&_data=routes%2Fkr.buy-sell.s`;
-        const r = await fetch(u, {
-          headers: { 'User-Agent': USER_AGENT, Accept: 'application/json', 'Accept-Language': 'ko-KR,ko;q=0.9' },
-        });
-        const json = JSON.parse(await r.text());
-        console.log(`    [PROBE6] allPage = ${JSON.stringify(json.allPage).slice(0, 900)}`);
-        console.log(`    [PROBE6] pow = ${JSON.stringify(json.pow).slice(0, 300)}`);
-        console.log(`    [PROBE6] currentFilters = ${JSON.stringify(json.currentFilters).slice(0, 300)}`);
-      } catch (e) {
-        console.log(`    [PROBE6] loader ERR ${e.message}`);
-      }
-      // 보호된 leaf(_index)의 전체 403 본문 + 헤더 힌트
-      try {
-        const u2 = `https://www.daangn.com/kr/buy-sell/s/?search=${kw}&in=${rg}&_data=routes%2Fkr.buy-sell.s._index`;
-        const r2 = await fetch(u2, {
-          headers: { 'User-Agent': USER_AGENT, Accept: 'application/json', 'Accept-Language': 'ko-KR,ko;q=0.9' },
-        });
-        console.log(`    [PROBE6] _index status=${r2.status} x-error=${r2.headers.get('x-remix-error') || '-'}`);
-        console.log(`    [PROBE6] _index body=${(await r2.text()).slice(0, 400)}`);
-      } catch (e) {
-        console.log(`    [PROBE6] _index ERR ${e.message}`);
-      }
     }
     items.slice(0, 5).forEach((it) =>
       console.log(`    [DEBUG] · ${it.title || '(제목없음)'} | ${it.region || '-'} | ${it.url}`)
