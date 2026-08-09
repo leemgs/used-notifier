@@ -418,25 +418,33 @@ async function searchDaangn(watch) {
       // 파싱 0건이면 페이지 앞부분을 덤프해 차단/리다이렉트/JS쉘 여부 확인
       const snippet = html.replace(/\s+/g, ' ').slice(0, 400);
       console.log(`    [DEBUG] HTML 앞부분: ${snippet}`);
-      // [PROBE2] Remix 데이터 구조 파악: buy-sell 상세 URL 주변 필드명/값 샘플
-      const de = deEscape(html);
-      // 상세 매물 URL 패턴 후보 (해시 slug 형태)
-      const detailRe = /\/kr\/buy-sell\/[^"'\\\s]*?([a-z0-9]{8,})[^"'\\\s]*/gi;
-      const found = [];
-      let mm;
-      while ((mm = detailRe.exec(de)) !== null && found.length < 4) {
-        if (/\/s\/?$/.test(mm[0]) || mm[0].includes('search=')) continue; // 검색페이지 자체 제외
-        found.push({ idx: mm.index, url: mm[0].slice(0, 80) });
+      // [PROBE3] 당근 데이터 엔드포인트 탐색 (Remix single-fetch .data 등)
+      const kw = encodeURIComponent(watch.keyword);
+      const rg = encodeURIComponent(watch.daangnRegion || '');
+      const candidates = [
+        `https://www.daangn.com/kr/buy-sell/s.data?search=${kw}&in=${rg}`,
+        `https://www.daangn.com/kr/buy-sell/s/.data?search=${kw}&in=${rg}`,
+        `https://www.daangn.com/kr/buy-sell/s/?search=${kw}&in=${rg}&_data=routes%2Fkr.buy-sell.s`,
+        `https://www.daangn.com/api/v1/search/buy_sell?search=${kw}`,
+      ];
+      for (const url of candidates) {
+        try {
+          const r = await fetch(url, {
+            headers: {
+              'User-Agent': USER_AGENT,
+              Accept: 'application/json, text/x-script; q=0.9, */*;q=0.8',
+              'Accept-Language': 'ko-KR,ko;q=0.9',
+            },
+          });
+          const ct = r.headers.get('content-type') || '';
+          const body = await r.text();
+          const head = body.replace(/\s+/g, ' ').slice(0, 180);
+          console.log(`    [PROBE3] ${r.status} len=${body.length} ct=${ct.slice(0, 40)} :: ${url.slice(40)}`);
+          console.log(`    [PROBE3]   head=${head}`);
+        } catch (e) {
+          console.log(`    [PROBE3] ERR ${e.message} :: ${url.slice(40)}`);
+        }
       }
-      console.log(`    [PROBE2] 상세URL 후보 ${found.length}건`);
-      found.forEach((f) => {
-        const win = de.slice(Math.max(0, f.idx - 250), f.idx + 120).replace(/\s+/g, ' ');
-        console.log(`    [PROBE2] url=${f.url}`);
-        console.log(`    [PROBE2]   ctx=${win}`);
-      });
-      // 자주 쓰는 필드 키 존재 여부
-      const keys = ['"title"', '"price"', '"regionName"', '"region"', '"name"', '"content"', '"id"', '"thumbnail"', '"productId"', '"article"'];
-      console.log(`    [PROBE2] 키: ${keys.filter((k) => de.includes(k)).join(' ') || '(없음)'}`);
     }
     items.slice(0, 5).forEach((it) =>
       console.log(`    [DEBUG] · ${it.title || '(제목없음)'} | ${it.region || '-'} | ${it.url}`)
