@@ -444,27 +444,31 @@ async function searchDaangn(watch) {
         walk(json, '$', 0);
         return hits;
       };
-      for (const id of tryIds) {
-        const u = `https://www.daangn.com/kr/buy-sell/s/?search=${kw}&in=${rg}&_data=${encodeURIComponent(id)}`;
-        try {
-          const r = await fetch(u, {
-            headers: { 'User-Agent': USER_AGENT, Accept: 'application/json', 'Accept-Language': 'ko-KR,ko;q=0.9' },
-          });
-          const body = await r.text();
-          let json = null;
-          try {
-            json = JSON.parse(body);
-          } catch (_) {}
-          if (!json) {
-            console.log(`    [PROBE5] ${id} → ${r.status} len=${body.length} (non-json)`);
-            continue;
-          }
-          const hits = findArrays(json);
-          console.log(`    [PROBE5] ${id} → ${r.status} top=[${Object.keys(json).join(',')}]`);
-          hits.forEach((h) => console.log(`    [PROBE5]     배열 ${h.path} len=${h.len} keys=${h.keys.join(',')}`));
-        } catch (e) {
-          console.log(`    [PROBE5] ${id} → ERR ${e.message}`);
-        }
+      void tryIds;
+      void findArrays;
+      // [PROBE6] allPage / pow 내용 + 보호된 leaf 응답 확인
+      try {
+        const u = `https://www.daangn.com/kr/buy-sell/s/?search=${kw}&in=${rg}&_data=routes%2Fkr.buy-sell.s`;
+        const r = await fetch(u, {
+          headers: { 'User-Agent': USER_AGENT, Accept: 'application/json', 'Accept-Language': 'ko-KR,ko;q=0.9' },
+        });
+        const json = JSON.parse(await r.text());
+        console.log(`    [PROBE6] allPage = ${JSON.stringify(json.allPage).slice(0, 900)}`);
+        console.log(`    [PROBE6] pow = ${JSON.stringify(json.pow).slice(0, 300)}`);
+        console.log(`    [PROBE6] currentFilters = ${JSON.stringify(json.currentFilters).slice(0, 300)}`);
+      } catch (e) {
+        console.log(`    [PROBE6] loader ERR ${e.message}`);
+      }
+      // 보호된 leaf(_index)의 전체 403 본문 + 헤더 힌트
+      try {
+        const u2 = `https://www.daangn.com/kr/buy-sell/s/?search=${kw}&in=${rg}&_data=routes%2Fkr.buy-sell.s._index`;
+        const r2 = await fetch(u2, {
+          headers: { 'User-Agent': USER_AGENT, Accept: 'application/json', 'Accept-Language': 'ko-KR,ko;q=0.9' },
+        });
+        console.log(`    [PROBE6] _index status=${r2.status} x-error=${r2.headers.get('x-remix-error') || '-'}`);
+        console.log(`    [PROBE6] _index body=${(await r2.text()).slice(0, 400)}`);
+      } catch (e) {
+        console.log(`    [PROBE6] _index ERR ${e.message}`);
       }
     }
     items.slice(0, 5).forEach((it) =>
