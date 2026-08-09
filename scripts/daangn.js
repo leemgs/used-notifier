@@ -418,32 +418,25 @@ async function searchDaangn(watch) {
       // 파싱 0건이면 페이지 앞부분을 덤프해 차단/리다이렉트/JS쉘 여부 확인
       const snippet = html.replace(/\s+/g, ' ').slice(0, 400);
       console.log(`    [DEBUG] HTML 앞부분: ${snippet}`);
-      // [PROBE] /s/ 페이지의 데이터 소스 탐색: 프레임워크 마커 + API/데이터 URL
-      const markers = [
-        '__remixContext',
-        '__remix',
-        'routeModules',
-        'window.__NUXT',
-        'window.__APOLLO',
-        'graphql',
-        '_data=',
-        'application/json',
-        'productId',
-        'articleId',
-        'flea-market',
-        'searchResult',
-      ].filter((k) => html.includes(k));
-      console.log(`    [PROBE] 마커: ${markers.join(', ') || '(없음)'}`);
-      const urls = Array.from(
-        new Set(
-          (html.match(/https?:\/\/[^"'\s<>]{0,120}(?:api|graphql|_data|search|bff)[^"'\s<>]{0,80}/gi) || [])
-        )
-      ).slice(0, 12);
-      console.log(`    [PROBE] URL 후보(${urls.length}):`);
-      urls.forEach((u) => console.log(`    [PROBE]   ${u}`));
-      // application/json 스크립트 블록의 앞부분(있으면 loader 데이터일 가능성)
-      const jsonScript = html.match(/<script[^>]*type="application\/json"[^>]*>([\s\S]{0,300})/i);
-      if (jsonScript) console.log(`    [PROBE] json script: ${jsonScript[1].replace(/\s+/g, ' ')}`);
+      // [PROBE2] Remix 데이터 구조 파악: buy-sell 상세 URL 주변 필드명/값 샘플
+      const de = deEscape(html);
+      // 상세 매물 URL 패턴 후보 (해시 slug 형태)
+      const detailRe = /\/kr\/buy-sell\/[^"'\\\s]*?([a-z0-9]{8,})[^"'\\\s]*/gi;
+      const found = [];
+      let mm;
+      while ((mm = detailRe.exec(de)) !== null && found.length < 4) {
+        if (/\/s\/?$/.test(mm[0]) || mm[0].includes('search=')) continue; // 검색페이지 자체 제외
+        found.push({ idx: mm.index, url: mm[0].slice(0, 80) });
+      }
+      console.log(`    [PROBE2] 상세URL 후보 ${found.length}건`);
+      found.forEach((f) => {
+        const win = de.slice(Math.max(0, f.idx - 250), f.idx + 120).replace(/\s+/g, ' ');
+        console.log(`    [PROBE2] url=${f.url}`);
+        console.log(`    [PROBE2]   ctx=${win}`);
+      });
+      // 자주 쓰는 필드 키 존재 여부
+      const keys = ['"title"', '"price"', '"regionName"', '"region"', '"name"', '"content"', '"id"', '"thumbnail"', '"productId"', '"article"'];
+      console.log(`    [PROBE2] 키: ${keys.filter((k) => de.includes(k)).join(' ') || '(없음)'}`);
     }
     items.slice(0, 5).forEach((it) =>
       console.log(`    [DEBUG] · ${it.title || '(제목없음)'} | ${it.region || '-'} | ${it.url}`)
