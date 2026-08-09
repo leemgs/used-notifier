@@ -418,47 +418,53 @@ async function searchDaangn(watch) {
       // 파싱 0건이면 페이지 앞부분을 덤프해 차단/리다이렉트/JS쉘 여부 확인
       const snippet = html.replace(/\s+/g, ' ').slice(0, 400);
       console.log(`    [DEBUG] HTML 앞부분: ${snippet}`);
-      // [PROBE4] _data 엔드포인트 전체 구조 덤프 → 매물 배열 위치 파악
+      // [PROBE5] 페이지 HTML에서 route id 추출 + 각 후보 _data 에 매물 배열 있는지 검사
       const kw = encodeURIComponent(watch.keyword);
       const rg = encodeURIComponent(watch.daangnRegion || '');
-      const dataUrl = `https://www.daangn.com/kr/buy-sell/s/?search=${kw}&in=${rg}&_data=routes%2Fkr.buy-sell.s`;
-      try {
-        const r = await fetch(dataUrl, {
-          headers: { 'User-Agent': USER_AGENT, Accept: 'application/json', 'Accept-Language': 'ko-KR,ko;q=0.9' },
-        });
-        const body = await r.text();
-        console.log(`    [PROBE4] ${r.status} len=${body.length}`);
-        let json;
-        try {
-          json = JSON.parse(body);
-        } catch (_) {
-          console.log(`    [PROBE4] JSON 파싱 실패, 본문: ${body.slice(0, 500)}`);
-          json = null;
-        }
-        if (json) {
-          console.log(`    [PROBE4] top keys: ${Object.keys(json).join(', ')}`);
-          // 재귀로 객체배열(길이>=1, 원소가 name/title 보유) 찾기
-          const hits = [];
-          const walk = (node, path, depth) => {
-            if (!node || depth > 5 || hits.length >= 6) return;
-            if (Array.isArray(node)) {
-              if (node.length && typeof node[0] === 'object' && node[0]) {
-                const k = Object.keys(node[0]);
-                if (k.some((x) => /name|title|price|content/i.test(x))) {
-                  hits.push({ path, len: node.length, keys: k.slice(0, 14) });
-                }
-              }
-              node.slice(0, 3).forEach((v, i) => walk(v, `${path}[${i}]`, depth + 1));
-            } else if (typeof node === 'object') {
-              for (const key of Object.keys(node)) walk(node[key], `${path}.${key}`, depth + 1);
+      const routeIds = Array.from(
+        new Set((html.match(/routes\/kr\.buy-sell[A-Za-z0-9._-]*/g) || []))
+      );
+      console.log(`    [PROBE5] HTML route id(${routeIds.length}): ${routeIds.join(' ') || '(없음)'}`);
+      const tryIds = Array.from(new Set([...routeIds, 'routes/kr.buy-sell.s._index', 'routes/kr.buy-sell.s.index']));
+      const findArrays = (json) => {
+        const hits = [];
+        const walk = (node, path, depth) => {
+          if (!node || depth > 6 || hits.length >= 8) return;
+          if (Array.isArray(node)) {
+            if (node.length && node[0] && typeof node[0] === 'object') {
+              const k = Object.keys(node[0]);
+              if (k.some((x) => /name|title|price|content|subject|article/i.test(x)))
+                hits.push({ path, len: node.length, keys: k.slice(0, 16) });
             }
-          };
-          walk(json, '$', 0);
-          hits.forEach((h) => console.log(`    [PROBE4] 배열 ${h.path} (len=${h.len}) keys=${h.keys.join(',')}`));
-          if (!hits.length) console.log(`    [PROBE4] 매물배열 못찾음. 본문앞부분: ${body.slice(0, 600)}`);
+            node.slice(0, 2).forEach((v, i) => walk(v, `${path}[${i}]`, depth + 1));
+          } else if (typeof node === 'object') {
+            for (const key of Object.keys(node)) walk(node[key], `${path}.${key}`, depth + 1);
+          }
+        };
+        walk(json, '$', 0);
+        return hits;
+      };
+      for (const id of tryIds) {
+        const u = `https://www.daangn.com/kr/buy-sell/s/?search=${kw}&in=${rg}&_data=${encodeURIComponent(id)}`;
+        try {
+          const r = await fetch(u, {
+            headers: { 'User-Agent': USER_AGENT, Accept: 'application/json', 'Accept-Language': 'ko-KR,ko;q=0.9' },
+          });
+          const body = await r.text();
+          let json = null;
+          try {
+            json = JSON.parse(body);
+          } catch (_) {}
+          if (!json) {
+            console.log(`    [PROBE5] ${id} → ${r.status} len=${body.length} (non-json)`);
+            continue;
+          }
+          const hits = findArrays(json);
+          console.log(`    [PROBE5] ${id} → ${r.status} top=[${Object.keys(json).join(',')}]`);
+          hits.forEach((h) => console.log(`    [PROBE5]     배열 ${h.path} len=${h.len} keys=${h.keys.join(',')}`));
+        } catch (e) {
+          console.log(`    [PROBE5] ${id} → ERR ${e.message}`);
         }
-      } catch (e) {
-        console.log(`    [PROBE4] ERR ${e.message}`);
       }
     }
     items.slice(0, 5).forEach((it) =>
