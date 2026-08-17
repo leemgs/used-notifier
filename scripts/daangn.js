@@ -368,30 +368,42 @@ function isGenericFreeKeyword(watch) {
   return /^(?:나눔|무료나눔|무료)$/.test(normalize(watch && watch.keyword));
 }
 
-function matchesWatch(item, watch, opts) {
-  // 무료 모드에서 이 세 단어는 제품명이 아니라 "모든 무료 매물" 검색으로 취급한다.
-  if (!isGenericFreeKeyword(watch) && !keywordMatches(item.title, watch.keyword)) return false;
-  if (!priceWithinMax(item, watch)) return false;
-
-  // 검색 자체가 특정 동네로 스코프된 경우(당근 로그인 쿠키 지역검색) 지역 필터를 건너뛴다.
-  if (opts && opts.skipLocation) return true;
-
-  if (isNationwide(watch.location)) return true; // 지역 미입력 → 전국
+function itemMatchesLocation(item, location) {
+  if (isNationwide(location)) return true;
 
   const hay = normalize(`${item.region} ${item.title}`);
   // 당근 등은 행정동(매탄3동)으로 표기하지만 지역 데이터는 법정동(매탄동)이라
   // 동/가/읍/면 앞 숫자를 제거한 버전도 함께 비교한다. (매탄3동 → 매탄동)
   const hayDong = hay.replace(/([가-힣])\d+(동|가|읍|면)/g, '$1$2');
-  const variants = locationVariants(watch.location);
+  const variants = locationVariants(location);
   if (variants.some((v) => hay.includes(v) || hayDong.includes(v))) return true;
 
   // 시/구 단위 입력 → 그 안의 동 이름이 매물 지역/제목에 있으면 매칭
-  for (const d of dongsForLocation(watch.location)) {
+  for (const d of dongsForLocation(location)) {
     if (d.length >= 2 && (hay.includes(d) || hayDong.includes(d))) return true;
   }
-
-  if (!item.region && process.env.STRICT_REGION === 'false') return true;
   return false;
+}
+
+function regionNameFromSlug(region) {
+  return String(region || '').trim().replace(/-\d+$/, '');
+}
+
+function matchesWatch(item, watch) {
+  // 무료 모드에서 이 세 단어는 제품명이 아니라 "모든 무료 매물" 검색으로 취급한다.
+  if (!isGenericFreeKeyword(watch) && !keywordMatches(item.title, watch.keyword)) return false;
+  if (!priceWithinMax(item, watch)) return false;
+
+  if (!itemMatchesLocation(item, watch.location)) return false;
+
+  // in= 값이 잘못되거나 당근이 기본 지역으로 폴백해도 다른 동네를 알리지 않도록,
+  // URL의 지역 slug(매탄동-4535 → 매탄동)도 실제 카드 지역과 반드시 대조한다.
+  const scopedLocation = regionNameFromSlug(watch.daangnRegion);
+  if (scopedLocation && !itemMatchesLocation(item, scopedLocation)) return false;
+
+  // 지역을 지정했는데 카드 지역을 파싱하지 못한 경우는 오알림 방지를 위해 fail-closed.
+  if (!item.region && !isNationwide(watch.location)) return false;
+  return true;
 }
 
 /**
@@ -402,11 +414,9 @@ function matchesWatch(item, watch, opts) {
 async function searchDaangn(watch) {
   const html = await fetchSearchHtml(watch.keyword, watch.daangnRegion);
   const items = parseItems(html);
-  // daangnRegion(in= 값) 또는 로그인 쿠키가 있으면 검색이 이미 그 동네로 한정되므로
-  // 카드의 불완전한 지역 텍스트로 재차 거르지 않는다. (없으면 기본지역(서초4동) 결과라
-  // 지역 필터로 걸러 오알림을 막는다.)
-  const skipLocation = !!watch.daangnRegion || !!process.env.DAANGN_COOKIE;
-  const matched = items.filter((it) => matchesWatch(it, watch, { skipLocation }));
+  // 쿠키나 in= 응답을 신뢰해 지역 검사를 생략하지 않는다. 당근이 잘못된/기본 지역으로
+  // 폴백할 수 있으므로 모든 카드를 watch.location 및 daangnRegion과 다시 대조한다.
+  const matched = items.filter((it) => matchesWatch(it, watch));
 
   if (process.env.DEBUG === 'true') {
     console.log(

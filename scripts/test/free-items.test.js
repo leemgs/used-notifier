@@ -3,7 +3,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { formatPrice } = require('../price');
-const { buildSearchUrl, matchesWatch, parseItems: parseDaangn } = require('../daangn');
+const {
+  buildSearchUrl,
+  matchesWatch,
+  parseItems: parseDaangn,
+  searchDaangn,
+} = require('../daangn');
 const { parseItems: parseJoongna } = require('../joongna');
 const { parseItems: parseBunjang } = require('../bunjang');
 const { buildHtml, buildText } = require('../mailer');
@@ -77,10 +82,50 @@ test('당근 매탄동 검색은 파싱 가능한 검색 경로와 in 파라미�
   );
 });
 
-test('지역 검색된 매탄동 화분 무료나눔은 가격 조건에 일치한다', () => {
-  const item = { title: '화분 무료나눔', region: '', priceValue: 0 };
-  const watch = { keyword: '화분', location: '매탄동', maxPrice: 0 };
-  assert.equal(matchesWatch(item, watch, { skipLocation: true }), true);
+test('지역 검색된 매탄동 화분 무료나눔은 실제 카드 지역까지 일치해야 한다', () => {
+  const watch = {
+    keyword: '화분',
+    location: '수원시영통구',
+    daangnRegion: '매탄동-4535',
+    maxPrice: 0,
+  };
+  assert.equal(matchesWatch({ title: '화분 무료나눔', region: '매탄3동', priceValue: 0 }, watch), true);
+  assert.equal(matchesWatch({ title: '화분 무료나눔', region: '서초4동', priceValue: 0 }, watch), false);
+  assert.equal(matchesWatch({ title: '화분 무료나눔', region: '', priceValue: 0 }, watch), false);
+});
+
+test('로그인 쿠키가 있어도 수원시영통구 감시에 서초4동 매물을 허용하지 않는다', () => {
+  const watch = { keyword: '테이블', location: '수원시영통구', maxPrice: 0 };
+  const item = { title: 'LIVART 원목 좌식 테이블', region: '서초4동', priceValue: 0 };
+  assert.equal(matchesWatch(item, watch), false);
+});
+
+test('당근 검색 전체 흐름에서도 쿠키 응답의 서초4동 매물을 차단한다', async () => {
+  const originalFetch = global.fetch;
+  const originalCookie = process.env.DAANGN_COOKIE;
+  process.env.DAANGN_COOKIE = 'session=test';
+  global.fetch = async () => ({
+    ok: true,
+    text: async () => `
+      <a href="/kr/buy-sell/LIVART-원목-좌식-테이블-cookie123/">
+        <span class="title">LIVART 원목 좌식 테이블</span>
+        <span class="price">나눔</span>
+        <span class="region">서초4동</span>
+      </a>`,
+  });
+
+  try {
+    const found = await searchDaangn({
+      keyword: '테이블',
+      location: '수원시영통구',
+      maxPrice: 0,
+    });
+    assert.deepEqual(found, []);
+  } finally {
+    global.fetch = originalFetch;
+    if (originalCookie === undefined) delete process.env.DAANGN_COOKIE;
+    else process.env.DAANGN_COOKIE = originalCookie;
+  }
 });
 
 test('알림 이메일 하단에 중고 알리미 대시보드 링크를 표시한다', () => {
