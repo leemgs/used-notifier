@@ -49,6 +49,14 @@
       "maxPrice": 0,
       "email": "leemgs@gmail.com",
       "enabled": true
+    },
+    {
+      "id": "투명아크릴판-경기도",
+      "keyword": "투명아크릴판",
+      "location": "경기도",
+      "maxPrice": 40000,
+      "email": "leemgs@gmail.com",
+      "enabled": true
     }
   ]
 }
