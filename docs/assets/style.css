@@ -148,6 +148,8 @@ input:disabled { cursor: not-allowed; background: #f1f5f9; color: #64748b; }
 .list-tools label { margin: 0; }
 .watch-search { flex: 1; }
 .watch-search input { margin-top: 5px; }
+.enabled-filter { width: 125px; flex: none; }
+.enabled-filter select { margin-top: 5px; }
 .page-size { width: 110px; flex: none; }
 .page-size select { margin-top: 5px; }
 
@@ -184,6 +186,7 @@ footer a { color: var(--carrot-dark); }
   .hero h1 { font-size: 23px; }
   .card { padding: 18px; }
   .list-tools { align-items: stretch; flex-direction: column; }
+  .enabled-filter { width: 100%; }
   .page-size { width: 100%; }
 }
 

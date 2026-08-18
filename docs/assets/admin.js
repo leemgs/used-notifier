@@ -43,6 +43,7 @@ const connStatus = $('conn-status');
 const saveStatus = $('save-status');
 const tbody = $('watch-tbody');
 const searchEl = $('watch-search');
+const enabledFilterEl = $('enabled-filter');
 const pageSizeEl = $('page-size');
 const paginationEl = $('watch-pagination');
 
@@ -229,9 +230,13 @@ function render() {
 
   const watches = data.watches;
   const query = searchEl.value.trim().toLocaleLowerCase('ko-KR');
-  const filtered = watches
-    .map((watch, index) => ({ watch, index }))
-    .filter(({ watch }) => !query || searchableText(watch).includes(query));
+  const enabledFilter = enabledFilterEl.value;
+  const filtered = WatchListUtils.filterAndSortWatches(
+    watches,
+    query,
+    enabledFilter,
+    searchableText
+  );
   const pageSize = Number(pageSizeEl.value) || 10;
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   currentPage = Math.min(Math.max(currentPage, 1), pageCount);
@@ -267,6 +272,10 @@ function render() {
 }
 
 searchEl.addEventListener('input', () => {
+  currentPage = 1;
+  render();
+});
+enabledFilterEl.addEventListener('change', () => {
   currentPage = 1;
   render();
 });
@@ -320,7 +329,10 @@ tbody.addEventListener('click', (e) => {
 });
 tbody.addEventListener('change', (e) => {
   const t = e.target.getAttribute('data-toggle');
-  if (t !== null) data.watches[+t].enabled = e.target.checked;
+  if (t !== null) {
+    data.watches[+t].enabled = e.target.checked;
+    render();
+  }
 });
 
 // ------- 이벤트: 기본값 입력 반영 -------
