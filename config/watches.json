@@ -43,6 +43,7 @@
         "daangn"
       ],
       "maxPrice": 0,
+      "maxAgeDays": 2,
       "email": "leemgs@gmail.com",
       "enabled": true
     },
