@@ -36,7 +36,12 @@
           },
           "keyword": {
             "type": "string",
-            "description": "조회할 제품 키워드 (제목에 포함되면 매칭). 예: 가마솥. maxPrice가 0일 때 나눔/무료나눔/무료를 쓰면 제품명과 관계없이 모든 무료 매물을 매칭."
+            "description": "후보 매물을 조회할 검색어. 기본적으로 제목에도 포함되어야 매칭. 예: 가마솥"
+          },
+          "allItems": {
+            "type": "boolean",
+            "description": "true면 keyword를 후보 조회에만 사용하고 제품명과 관계없이 지역·가격 조건에 맞는 모든 매물을 알림. 모든 무료나눔은 keyword를 나눔, maxPrice를 0으로 함께 설정.",
+            "default": false
           },
           "location": {
             "type": "string",

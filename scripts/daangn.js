@@ -390,8 +390,11 @@ function regionNameFromSlug(region) {
 }
 
 function matchesWatch(item, watch) {
-  // 무료 모드에서 이 세 단어는 제품명이 아니라 "모든 무료 매물" 검색으로 취급한다.
-  if (!isGenericFreeKeyword(watch) && !keywordMatches(item.title, watch.keyword)) return false;
+  // allItems는 검색어를 후보 조회에만 사용하고 제품명 필터는 적용하지 않는다.
+  // 이전 설정과의 호환성을 위해 무료 모드의 범용 키워드도 같은 방식으로 처리한다.
+  if (!watch.allItems && !isGenericFreeKeyword(watch) && !keywordMatches(item.title, watch.keyword)) {
+    return false;
+  }
   if (!priceWithinMax(item, watch)) return false;
 
   if (!itemMatchesLocation(item, watch.location)) return false;

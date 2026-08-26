@@ -69,11 +69,13 @@ form.addEventListener('submit', (e) => {
   const watch = {
     id: makeId(keyword, location),
     keyword,
+    allItems: document.getElementById('all-items').checked || undefined,
     location,
     daangnRegion: document.getElementById('daangn-region').value.trim() || undefined,
     email,
     enabled: true,
   };
+  if (!watch.allItems) delete watch.allItems;
   if (maxPrice !== undefined) watch.maxPrice = maxPrice;
   if (sites.length) watch.sites = sites; // 선택한 사이트 명시 (미선택 시 생략 → 기본 전체)
 

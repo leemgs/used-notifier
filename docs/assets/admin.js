@@ -355,6 +355,7 @@ function openEdit(index) {
   $('edit-index').value = index;
   const w = isNew ? {} : data.watches[index];
   $('f-keyword').value = w.keyword || '';
+  $('f-all-items').checked = w.allItems === true;
   const sel = watchSitesOf(w);
   document.querySelectorAll('input[name="f-site"]').forEach((el) => {
     el.checked = sel.includes(el.value);
@@ -395,6 +396,7 @@ $('edit-form').addEventListener('submit', (e) => {
   const entry = {
     id: slugId(keyword, location),
     keyword,
+    allItems: $('f-all-items').checked || undefined,
     location,
     daangnRegion: $('f-daangn-region').value.trim() || undefined,
     sites: (function () {
