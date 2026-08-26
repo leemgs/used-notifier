@@ -69,6 +69,15 @@ test('당근 카드의 나눔 문구와 숫자 0 가격을 무료 매물로 파�
   assert.equal(numeric.priceValue, 0);
 });
 
+test('당근 카드의 datetime 등록일을 파싱한다', () => {
+  const html = `
+    <a href="/kr/buy-sell/의자-나눔-date123/">
+      <span class="title">의자</span><span class="price">나눔</span>
+      <time datetime="2026-08-24T03:00:00Z">2일 전</time>
+    </a>`;
+  assert.equal(parseDaangn(html)[0].publishedAt, '2026-08-24T03:00:00.000Z');
+});
+
 test('무료 모드의 나눔 키워드는 제품명과 무관하게 무료 품목만 허용한다', () => {
   const watch = { keyword: '나눔', location: '', maxPrice: 0 };
   assert.equal(matchesWatch({ title: '벽돌', priceValue: 0 }, watch), true);
@@ -124,6 +133,14 @@ test('물품명 모두인 무료 감시는 당근에서 나눔 검색어로 조�
   } finally {
     global.fetch = originalFetch;
   }
+});
+
+test('나눔 등록일 범위는 지정 일수 이내만 허용하고 등록일 불명은 제외한다', () => {
+  const now = Date.now();
+  const watch = { keyword: '모두', location: '', maxPrice: 0, maxAgeDays: 3 };
+  assert.equal(matchesWatch({ title: '의자', priceValue: 0, publishedAt: new Date(now - 86400000).toISOString() }, watch), true);
+  assert.equal(matchesWatch({ title: '의자', priceValue: 0, publishedAt: new Date(now - 5 * 86400000).toISOString() }, watch), false);
+  assert.equal(matchesWatch({ title: '의자', priceValue: 0 }, watch), false);
 });
 
 test('당근 매탄동 검색은 파싱 가능한 검색 경로와 in 파라미터를 사용한다', () => {

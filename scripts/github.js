@@ -64,7 +64,7 @@ function buildIssueBody(watch, items, chatMessage, siteName, siteKey) {
   const message = chatMessage || '안녕하세요. 제가 구매 가능할까요?';
   const site = siteName || '당근마켓';
   const lines = [
-    `**사이트:** \`${site}\` · **키워드:** \`${watch.keyword}\` · **지역:** \`${watch.location || '전체'}\``,
+    `**사이트:** \`${site}\` · **키워드:** \`${watch.keyword}\` · **지역:** \`${watch.location || '전체'}\`${watch.maxAgeDays == null ? '' : ` · **등록일:** 최근 \`${watch.maxAgeDays}일\` 이내`}`,
     '',
     `${site}에 조건에 맞는 신규 매물 **${items.length}건**이 올라왔습니다.`,
     '',
@@ -74,6 +74,7 @@ function buildIssueBody(watch, items, chatMessage, siteName, siteKey) {
     lines.push(`### ${i + 1}. ${it.title || '(제목 없음)'}`);
     if (it.price) lines.push(`- 가격: ${it.price}`);
     if (it.region) lines.push(`- 지역: ${it.region}`);
+    if (it.publishedAt) lines.push(`- 등록일: ${new Date(it.publishedAt).toLocaleString('ko-KR')}`);
     lines.push(`- ${site} 매물 보기: ${it.url}`);
     lines.push(`- 💬 빠른 채팅: ${chatHelperLink(it, message, siteKey)}`);
     lines.push('');

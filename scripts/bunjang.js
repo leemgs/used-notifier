@@ -86,8 +86,16 @@ function normalizeItems(list) {
         region: toRegion(p.location || p.location_name || p.region || ''),
         url: `${PRODUCT_BASE}/${p.pid}`,
         image: p.product_image || p.image || '',
+        publishedAt: normalizeTimestamp(p.update_time || p.created_at || p.createdAt),
       };
     });
+}
+
+function normalizeTimestamp(value) {
+  if (value == null || value === '') return '';
+  const raw = String(value);
+  const milliseconds = /^\d{10}$/.test(raw) ? Number(raw) * 1000 : /^\d{13}$/.test(raw) ? Number(raw) : Date.parse(raw);
+  return Number.isFinite(milliseconds) ? new Date(milliseconds).toISOString() : '';
 }
 
 /**

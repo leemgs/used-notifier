@@ -152,6 +152,8 @@ function collectProducts(node, out, seen) {
         region: String(region || ''),
         image: typeof image === 'string' ? image : '',
         url: `${BASE}/product/${key}`,
+        publishedAt:
+          node.createdAt || node.createdDate || node.registeredAt || node.updateDate || '',
       });
     }
   }
@@ -182,7 +184,15 @@ function normalizeItems(rawItems) {
     region: it.region || '',
     url: it.url,
     image: it.image || '',
+    publishedAt: normalizeTimestamp(it.publishedAt),
   }));
+}
+
+function normalizeTimestamp(value) {
+  if (value == null || value === '') return '';
+  const raw = String(value);
+  const milliseconds = /^\d{10}$/.test(raw) ? Number(raw) * 1000 : /^\d{13}$/.test(raw) ? Number(raw) : Date.parse(raw);
+  return Number.isFinite(milliseconds) ? new Date(milliseconds).toISOString() : '';
 }
 
 /**

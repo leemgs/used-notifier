@@ -77,6 +77,10 @@ form.addEventListener('submit', (e) => {
   };
   if (!watch.allItems) delete watch.allItems;
   if (maxPrice !== undefined) watch.maxPrice = maxPrice;
+  const maxAgeDays = document.getElementById('max-age-days').value;
+  if (document.getElementById('free-share').checked && maxAgeDays !== '') {
+    watch.maxAgeDays = parseInt(maxAgeDays, 10);
+  }
   if (sites.length) watch.sites = sites; // 선택한 사이트 명시 (미선택 시 생략 → 기본 전체)
 
   snippetEl.textContent = JSON.stringify(watch, null, 2);
@@ -107,11 +111,13 @@ if (maxPriceInput && freeShareInput) {
     if (freeShareInput.checked) maxPriceInput.value = '0';
     else if (maxPriceInput.value === '0') maxPriceInput.value = '';
     maxPriceInput.disabled = freeShareInput.checked;
+    document.getElementById('max-age-wrap').classList.toggle('hidden', !freeShareInput.checked);
   });
   maxPriceInput.addEventListener('input', () => {
     const d = maxPriceInput.value.replace(/[^\d]/g, '');
     maxPriceInput.value = d ? parseInt(d, 10).toLocaleString('ko-KR') : '';
     freeShareInput.checked = d === '0';
     maxPriceInput.disabled = freeShareInput.checked;
+    document.getElementById('max-age-wrap').classList.toggle('hidden', !freeShareInput.checked);
   });
 }

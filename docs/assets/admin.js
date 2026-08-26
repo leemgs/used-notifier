@@ -365,6 +365,8 @@ function openEdit(index) {
   $('f-maxprice').value = w.maxPrice !== undefined ? Number(w.maxPrice).toLocaleString('ko-KR') : '';
   $('f-free-share').checked = Number(w.maxPrice) === 0 && w.maxPrice !== undefined;
   $('f-maxprice').disabled = $('f-free-share').checked;
+  $('f-max-age-days').value = w.maxAgeDays !== undefined ? w.maxAgeDays : '';
+  $('f-max-age-wrap').classList.toggle('hidden', !$('f-free-share').checked);
   $('f-email').value = formatEmails(w.email);
   $('f-msg').value = w.chatMessage || '';
   $('f-enabled').checked = w.enabled !== false;
@@ -386,6 +388,7 @@ $('f-free-share').addEventListener('change', (e) => {
   if (e.target.checked) $('f-maxprice').value = '0';
   else if ($('f-maxprice').value === '0') $('f-maxprice').value = '';
   $('f-maxprice').disabled = e.target.checked;
+  $('f-max-age-wrap').classList.toggle('hidden', !e.target.checked);
 });
 
 $('edit-form').addEventListener('submit', (e) => {
@@ -405,6 +408,10 @@ $('edit-form').addEventListener('submit', (e) => {
       return chosen.length && chosen.length < ALL_SITES.length ? chosen : undefined;
     })(),
     maxPrice: $('f-free-share').checked ? 0 : parseMaxPrice($('f-maxprice').value),
+    maxAgeDays:
+      $('f-free-share').checked && $('f-max-age-days').value !== ''
+        ? parseInt($('f-max-age-days').value, 10)
+        : undefined,
     email: emailsToStore($('f-email').value),
     chatMessage: $('f-msg').value.trim() || undefined,
     enabled: $('f-enabled').checked,

@@ -67,6 +67,11 @@
           <input id="free-share" type="checkbox" /> 🎁 무료나눔
           <span class="hint">체크하면 희망 금액이 자동으로 0원이 됩니다.</span>
         </label>
+        <label id="max-age-wrap" class="hidden">
+          등록일 범위 · 며칠 전까지
+          <input id="max-age-days" type="number" inputmode="numeric" min="0" step="1" placeholder="예: 3" />
+          <span class="hint" style="font-weight:400;">0은 오늘, 3은 오늘을 포함한 최근 3일 이내에 등록된 나눔만 알립니다. 비우면 등록일 제한 없음.</span>
+        </label>
         <label>
           알림 받을 이메일
           <input id="email" type="email" multiple placeholder="예: myname@gmail.com, friend@gmail.com" required />

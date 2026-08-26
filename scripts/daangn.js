@@ -111,6 +111,7 @@ function parseItems(html) {
       region: item.region || existing.region || '',
       url: item.url || existing.url || `${BASE_URL}/kr/buy-sell/${id}/`,
       image: item.image || existing.image || '',
+      publishedAt: item.publishedAt || existing.publishedAt || '',
     });
   };
 
@@ -131,6 +132,9 @@ function parseItems(html) {
           region: target.address || target.areaServed || '',
           url: absolutize(url),
           image: firstImage(target.image),
+          publishedAt: normalizePublishedAt(
+            target.datePosted || target.datePublished || target.uploadDate || target.createdAt
+          ),
         });
       }
     }
@@ -153,6 +157,7 @@ function parseItems(html) {
       region: pickRegion(inner),
       url: absolutize(href),
       image: pickImage(inner),
+      publishedAt: pickPublishedAt(inner),
     });
   }
 
@@ -228,6 +233,16 @@ function matchPriceNear(win, center) {
   return v == null ? '' : v;
 }
 
+function matchPublishedAtNear(win, center) {
+  const matches = [];
+  const re = /"(?:createdAt|publishedAt|published_at|created_at|datePosted)"\s*:\s*(?:"([^"]{4,40})"|(\d{10,13}))/gi;
+  let mm;
+  while ((mm = re.exec(win)) !== null) {
+    matches.push({ idx: mm.index, val: normalizePublishedAt(mm[1] || mm[2]) });
+  }
+  return nearestValue(matches.filter((m) => m.val), center) || '';
+}
+
 // 카드 본문 텍스트에서 동네(…동/읍/면/가) 토큰을 추출. 태그/JSON 경계를 넘지 않도록
 // 링크 직후 구간에서 뒤에 한글이 붙지 않는 첫 지역 토큰을 찾는다.
 function extractNeighborhood(s) {
@@ -265,6 +280,7 @@ function extractFromText(text, add) {
       region,
       url: absolutize(href),
       image: '',
+      publishedAt: matchPublishedAtNear(win, center),
     });
   }
 }
@@ -363,6 +379,18 @@ function priceWithinMax(item, watch) {
   return item.priceValue <= maxP;
 }
 
+function ageWithinMax(item, watch, now = Date.now()) {
+  if (watch.maxAgeDays === '' || watch.maxAgeDays == null) return true;
+  const days = Number(watch.maxAgeDays);
+  if (!Number.isInteger(days) || days < 0) return true;
+  const published = Date.parse(item.publishedAt || '');
+  if (!Number.isFinite(published)) return false;
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
+  const earliest = startOfToday.getTime() - days * 86400000;
+  return published >= earliest && published <= now;
+}
+
 function isGenericFreeKeyword(watch) {
   if (Number(watch && watch.maxPrice) !== 0) return false;
   return /^(?:나눔|무료나눔|무료)$/.test(normalize(watch && watch.keyword));
@@ -412,6 +440,7 @@ function matchesWatch(item, watch) {
     return false;
   }
   if (!priceWithinMax(item, watch)) return false;
+  if (!ageWithinMax(item, watch)) return false;
 
   if (!itemMatchesLocation(item, watch.location)) return false;
 
@@ -563,6 +592,24 @@ function pickRegion(inner) {
 function pickImage(inner) {
   const m = inner.match(/<img[^>]+src="([^"]+)"/i);
   return m ? m[1] : '';
+}
+
+function normalizePublishedAt(value) {
+  if (value == null || value === '') return '';
+  const raw = String(value).trim();
+  if (/^\d{10,13}$/.test(raw)) {
+    const milliseconds = raw.length === 10 ? Number(raw) * 1000 : Number(raw);
+    const date = new Date(milliseconds);
+    return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+  }
+  const timestamp = Date.parse(raw);
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : '';
+}
+
+function pickPublishedAt(inner) {
+  const datetime = String(inner).match(/datetime=["']([^"']+)["']/i);
+  if (datetime) return normalizePublishedAt(datetime[1]);
+  return '';
 }
 
 module.exports = {
