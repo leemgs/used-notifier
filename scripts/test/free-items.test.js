@@ -75,6 +75,20 @@ test('무료 모드의 나눔 키워드는 제품명과 무관하게 무료 품�
   assert.equal(matchesWatch({ title: '벽돌', priceValue: 10000 }, watch), false);
 });
 
+test('매탄동 모든 무료나눔 감시는 제품 종류와 다른 동네를 구분한다', () => {
+  const watch = {
+    keyword: '나눔',
+    location: '매탄동',
+    daangnRegion: '매탄동-4535',
+    maxPrice: 0,
+  };
+
+  assert.equal(matchesWatch({ title: '책장', region: '매탄3동', priceValue: 0 }, watch), true);
+  assert.equal(matchesWatch({ title: '냉장고', region: '매탄동', priceValue: 0 }, watch), true);
+  assert.equal(matchesWatch({ title: '책장', region: '매탄동', priceValue: 1000 }, watch), false);
+  assert.equal(matchesWatch({ title: '책장', region: '영통동', priceValue: 0 }, watch), false);
+});
+
 test('당근 매탄동 검색은 파싱 가능한 검색 경로와 in 파라미터를 사용한다', () => {
   assert.equal(
     buildSearchUrl('화분', '매탄동-4535'),

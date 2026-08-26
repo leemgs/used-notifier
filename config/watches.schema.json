@@ -36,7 +36,7 @@
           },
           "keyword": {
             "type": "string",
-            "description": "조회할 제품 키워드 (제목에 포함되면 매칭). 예: 가마솥"
+            "description": "조회할 제품 키워드 (제목에 포함되면 매칭). 예: 가마솥. maxPrice가 0일 때 나눔/무료나눔/무료를 쓰면 제품명과 관계없이 모든 무료 매물을 매칭."
           },
           "location": {
             "type": "string",

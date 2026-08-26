@@ -51,6 +51,18 @@
       "enabled": true
     },
     {
+      "id": "무료나눔-매탄동",
+      "keyword": "나눔",
+      "location": "매탄동",
+      "daangnRegion": "매탄동-4535",
+      "sites": [
+        "daangn"
+      ],
+      "maxPrice": 0,
+      "email": "leemgs@gmail.com",
+      "enabled": true
+    },
+    {
       "id": "투명아크릴판-경기도",
       "keyword": "투명아크릴판",
       "location": "경기도",
