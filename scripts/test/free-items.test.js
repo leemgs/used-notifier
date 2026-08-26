@@ -95,6 +95,37 @@ test('allItems는 일반 검색어도 제품명 필터가 아닌 후보 조회�
   assert.equal(matchesWatch({ title: '유아용 의자', region: '매탄동', priceValue: 3000 }, watch), true);
 });
 
+test('물품명 모두, 0원, 매탄동은 모든 종류의 매탄동 나눔만 매칭한다', () => {
+  const watch = {
+    keyword: '모두',
+    location: '매탄동',
+    daangnRegion: '매탄동-4535',
+    maxPrice: 0,
+  };
+  assert.equal(matchesWatch({ title: '소파 나눔', region: '매탄2동', priceValue: 0 }, watch), true);
+  assert.equal(matchesWatch({ title: '책상', region: '매탄동', priceValue: 0 }, watch), true);
+  assert.equal(matchesWatch({ title: '책상', region: '매탄동', priceValue: 5000 }, watch), false);
+  assert.equal(matchesWatch({ title: '책상', region: '원천동', priceValue: 0 }, watch), false);
+});
+
+test('물품명 모두인 무료 감시는 당근에서 나눔 검색어로 조회한다', async () => {
+  const originalFetch = global.fetch;
+  let requestedUrl = '';
+  global.fetch = async (url) => {
+    requestedUrl = url;
+    return { ok: true, text: async () => '' };
+  };
+  try {
+    await searchDaangn({ keyword: '모두', location: '매탄동', daangnRegion: '매탄동-4535', maxPrice: 0 });
+    assert.equal(
+      requestedUrl,
+      'https://www.daangn.com/kr/buy-sell/?search=%EB%82%98%EB%88%94&in=%EB%A7%A4%ED%83%84%EB%8F%99-4535'
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test('당근 매탄동 검색은 파싱 가능한 검색 경로와 in 파라미터를 사용한다', () => {
   assert.equal(
     buildSearchUrl('화분', '매탄동-4535'),

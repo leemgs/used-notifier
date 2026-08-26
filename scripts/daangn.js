@@ -368,6 +368,17 @@ function isGenericFreeKeyword(watch) {
   return /^(?:나눔|무료나눔|무료)$/.test(normalize(watch && watch.keyword));
 }
 
+function isAllItemsKeyword(watch) {
+  return /^(?:모두|전체|all)$/.test(normalize(watch && watch.keyword));
+}
+
+// "모두"는 필터 의미이지 당근 검색어가 아니다. 무료 전체 감시에서는 당근이 실제로
+// 무료 매물 후보를 반환할 수 있도록 검색어를 "나눔"으로 변환한다.
+function searchKeywordForWatch(watch) {
+  if ((watch.allItems || isAllItemsKeyword(watch)) && Number(watch.maxPrice) === 0) return '나눔';
+  return watch.keyword;
+}
+
 function itemMatchesLocation(item, location) {
   if (isNationwide(location)) return true;
 
@@ -392,7 +403,12 @@ function regionNameFromSlug(region) {
 function matchesWatch(item, watch) {
   // allItems는 검색어를 후보 조회에만 사용하고 제품명 필터는 적용하지 않는다.
   // 이전 설정과의 호환성을 위해 무료 모드의 범용 키워드도 같은 방식으로 처리한다.
-  if (!watch.allItems && !isGenericFreeKeyword(watch) && !keywordMatches(item.title, watch.keyword)) {
+  if (
+    !watch.allItems &&
+    !isAllItemsKeyword(watch) &&
+    !isGenericFreeKeyword(watch) &&
+    !keywordMatches(item.title, watch.keyword)
+  ) {
     return false;
   }
   if (!priceWithinMax(item, watch)) return false;
@@ -415,7 +431,7 @@ function matchesWatch(item, watch) {
  * @returns {Promise<Array>} 조건을 만족하는 매물 목록
  */
 async function searchDaangn(watch) {
-  const html = await fetchSearchHtml(watch.keyword, watch.daangnRegion);
+  const html = await fetchSearchHtml(searchKeywordForWatch(watch), watch.daangnRegion);
   const items = parseItems(html);
   // 쿠키나 in= 응답을 신뢰해 지역 검사를 생략하지 않는다. 당근이 잘못된/기본 지역으로
   // 폴백할 수 있으므로 모든 카드를 watch.location 및 daangnRegion과 다시 대조한다.
