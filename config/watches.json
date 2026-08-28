@@ -54,6 +54,17 @@
       "maxPrice": 40000,
       "email": "leemgs@gmail.com",
       "enabled": true
+    },
+    {
+      "id": "lpg캠핑-수원시영통구",
+      "keyword": "LPG캠핑",
+      "location": "수원시영통구",
+      "sites": [
+        "daangn"
+      ],
+      "maxPrice": 50000,
+      "email": "leemgs@gmail.com",
+      "enabled": true
     }
   ]
 }
