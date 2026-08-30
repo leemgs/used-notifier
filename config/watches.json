@@ -65,6 +65,12 @@
       "maxPrice": 50000,
       "email": "leemgs@gmail.com",
       "enabled": true
+    },
+    {
+      "id": "s24-수원시영통구",
+      "keyword": "S24+",
+      "location": "수원시영통구",
+      "enabled": true
     }
   ]
 }
