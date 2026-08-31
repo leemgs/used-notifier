@@ -34,11 +34,10 @@
       "enabled": false
     },
     {
-      "id": "모두-매탄동",
+      "id": "모두-수원시영통구",
       "keyword": "모두",
       "allItems": true,
-      "location": "매탄동",
-      "daangnRegion": "매탄동-4535",
+      "location": "수원시영통구",
       "sites": [
         "daangn"
       ],
@@ -64,13 +63,13 @@
       ],
       "maxPrice": 50000,
       "email": "leemgs@gmail.com",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "s24-수원시영통구",
       "keyword": "S24+",
       "location": "수원시영통구",
-      "enabled": true
+      "enabled": false
     }
   ]
 }
