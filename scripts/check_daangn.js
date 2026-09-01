@@ -16,7 +16,7 @@
 const fs = require('fs');
 const path = require('path');
 const { sendNewItemsEmail } = require('./mailer');
-const { createIssue } = require('./github');
+const { createIssue, reportEmailFailure } = require('./github');
 const { SOURCES, watchSites } = require('./sources');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -82,6 +82,8 @@ async function main() {
   let stateChanged = false;
   let totalNew = 0;
   const errors = [];
+  // 이메일 발송 실패를 GitHub 이슈로 기록했는지 여부(실행당 1회만 시도해 중복 방지).
+  let emailFailureReported = false;
 
   for (let i = 0; i < config.watches.length; i++) {
     const watch = config.watches[i];
@@ -174,6 +176,21 @@ async function main() {
         } catch (err) {
           console.error(`  ✖ 이메일 발송 실패: ${err.message}`);
           errors.push(`${id}/${siteKey} 이메일: ${err.message}`);
+          // 이메일 실패 사실을 GitHub 이슈로 남긴다(실행당 1회, 열린 이슈 있으면 생략).
+          if (!emailFailureReported) {
+            emailFailureReported = true; // 재시도 루프에서 중복 호출 방지
+            try {
+              const fi = await reportEmailFailure({ to, watch, source, error: err });
+              if (fi.deduped) {
+                console.warn(`  ℹ 이메일 실패 이슈가 이미 열려 있습니다 → #${fi.number} ${fi.html_url}`);
+              } else {
+                console.warn(`  🐙 이메일 실패를 이슈로 등록했습니다 → #${fi.number} ${fi.html_url}`);
+              }
+            } catch (reportErr) {
+              console.error(`  ✖ 실패 이슈 등록도 실패: ${reportErr.message}`);
+              errors.push(`${id}/${siteKey} 실패이슈: ${reportErr.message}`);
+            }
+          }
         }
       }
 
