@@ -86,12 +86,18 @@ jobs:
 
           echo "▶ 반복 점검 시작: ${POLL}분 간격, 최대 ${MAXM}분"
           n=0
+          RUN_FAILED=0
           while :; do
             n=$((n + 1))
             echo ""
             echo "═════ 점검 #$n · $(date -u '+%Y-%m-%d %H:%M:%SZ') ═════"
 
             ( cd scripts && node check_daangn.js )
+            CHECK_STATUS=$?
+            if [ "$CHECK_STATUS" -ne 0 ]; then
+              RUN_FAILED=1
+              echo "::error::검색 또는 알림 발송에 실패했습니다. 위 오류 로그와 저장소 Secrets를 확인하세요."
+            fi
 
             # DRY_RUN 이 아니고 상태가 바뀌었으면 seen.json 커밋/푸시 (매 주기 영속화)
             if [ "${DRY_RUN}" != "true" ] && [ -n "$(git status --porcelain state/)" ]; then
@@ -111,3 +117,5 @@ jobs:
             echo "…다음 점검까지 ${POLL}분 대기"
             sleep $(( POLL * 60 ))
           done
+
+          exit "$RUN_FAILED"
