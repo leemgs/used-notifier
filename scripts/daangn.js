@@ -32,6 +32,14 @@ const { formatPrice, parsePriceValue } = require('./price');
 // 환경변수 DAANGN_SEARCH_URL 로 재정의 가능.
 const DEFAULT_SEARCH_URL = 'https://www.daangn.com/kr/buy-sell/?search={kw}';
 
+// 당근 검색은 in=이 없으면 실행 환경과 무관하게 서초4동 결과를 돌려준다. 관리 화면에서
+// 시/군/구만 선택한 기존 감시도 엉뚱한 기본 지역으로 조회되지 않도록 대표 동네를 사용한다.
+// 사용자가 daangnRegion을 직접 지정하면 그 값을 항상 우선한다.
+const DEFAULT_REGION_BY_LOCATION = Object.freeze({
+  수원시영통구: '매탄동-4535',
+  영통구: '매탄동-4535',
+});
+
 // 매물 상세 페이지의 기본 도메인 (상대경로 -> 절대경로 변환용)
 const BASE_URL = 'https://www.daangn.com';
 
@@ -49,6 +57,12 @@ function buildSearchUrl(keyword, region) {
   let url = template.replaceAll('{kw}', encodeURIComponent(keyword));
   if (region) url += `${url.includes('?') ? '&' : '?'}in=${encodeURIComponent(region)}`;
   return url;
+}
+
+function resolveDaangnRegion(watch) {
+  const explicit = String((watch && watch.daangnRegion) || '').trim();
+  if (explicit) return explicit;
+  return DEFAULT_REGION_BY_LOCATION[normalize(watch && watch.location)] || '';
 }
 
 async function fetchSearchHtml(keyword, region) {
@@ -384,7 +398,9 @@ function ageWithinMax(item, watch, now = Date.now()) {
   const days = Number(watch.maxAgeDays);
   if (!Number.isInteger(days) || days < 0) return true;
   const published = Date.parse(item.publishedAt || '');
-  if (!Number.isFinite(published)) return false;
+  // 당근 검색 카드가 등록일을 내려주지 않는 경우가 많다. 날짜 불명 매물을 전부 버리면
+  // 정상적인 신규 나눔까지 0건이 되므로, 날짜를 확인할 수 있을 때만 범위를 적용한다.
+  if (!Number.isFinite(published)) return true;
   const startOfToday = new Date(now);
   startOfToday.setHours(0, 0, 0, 0);
   const earliest = startOfToday.getTime() - days * 86400000;
@@ -446,6 +462,8 @@ function matchesWatch(item, watch) {
 
   // in= 값이 잘못되거나 당근이 기본 지역으로 폴백해도 다른 동네를 알리지 않도록,
   // URL의 지역 slug(매탄동-4535 → 매탄동)도 실제 카드 지역과 반드시 대조한다.
+  // 사용자가 직접 입력한 지역 코드는 해당 동네로 엄격히 제한한다. 시/군/구 감시에
+  // 자동 적용한 대표 동네는 검색의 중심점일 뿐이므로 위의 넓은 location 조건을 유지한다.
   const scopedLocation = regionNameFromSlug(watch.daangnRegion);
   if (scopedLocation && !itemMatchesLocation(item, scopedLocation)) return false;
 
@@ -460,7 +478,8 @@ function matchesWatch(item, watch) {
  * @returns {Promise<Array>} 조건을 만족하는 매물 목록
  */
 async function searchDaangn(watch) {
-  const html = await fetchSearchHtml(searchKeywordForWatch(watch), watch.daangnRegion);
+  const daangnRegion = resolveDaangnRegion(watch);
+  const html = await fetchSearchHtml(searchKeywordForWatch(watch), daangnRegion);
   const items = parseItems(html);
   // 쿠키나 in= 응답을 신뢰해 지역 검사를 생략하지 않는다. 당근이 잘못된/기본 지역으로
   // 폴백할 수 있으므로 모든 카드를 watch.location 및 daangnRegion과 다시 대조한다.
@@ -469,7 +488,7 @@ async function searchDaangn(watch) {
   if (process.env.DEBUG === 'true') {
     console.log(
       `    [DEBUG] HTML ${html.length}자, 파싱된 매물 ${items.length}건, 매칭 ${matched.length}건` +
-        (watch.daangnRegion ? ` (in=${watch.daangnRegion} 지역검색)` : '') +
+        (daangnRegion ? ` (in=${daangnRegion} 지역검색)` : ' (지역코드 없음: 당근 기본지역 응답)') +
         (process.env.DAANGN_COOKIE ? ' (로그인 쿠키)' : '') +
         (isNationwide(watch.location) ? ' (전국 검색)' : '')
     );
@@ -614,6 +633,7 @@ function pickPublishedAt(inner) {
 
 module.exports = {
   buildSearchUrl,
+  resolveDaangnRegion,
   fetchSearchHtml,
   parseItems,
   matchesWatch,
