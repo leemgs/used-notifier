@@ -34,10 +34,10 @@
       "enabled": false
     },
     {
-      "id": "모두-수원시영통구",
+      "id": "모두-수원시",
       "keyword": "모두",
       "allItems": true,
-      "location": "수원시영통구",
+      "location": "수원시",
       "sites": [
         "daangn"
       ],
