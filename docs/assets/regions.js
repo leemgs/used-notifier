@@ -17,6 +17,13 @@ const REGIONS = {"서울특별시":{"강남구":["개포동","논현동","대치
 function createRegionPicker(sidoEl, sggEl, dongEl) {
   const NATION = '';
 
+  // 구(區)로 나뉜 시의 통합 이름을 구한다. (예: "수원시영통구" -> "수원시")
+  // 이렇게 반환한 시 이름 하나로 그 시의 모든 구·동 매물을 조회한다.
+  function cityBaseOf(sgg) {
+    const m = String(sgg || '').match(/^(.+?시).*구$/);
+    return m ? m[1] : '';
+  }
+
   sidoEl.innerHTML =
     '<option value="">전국 (지역 전체)</option>' +
     Object.keys(REGIONS).map((s) => `<option value="${s}">${s}</option>`).join('');
@@ -32,9 +39,19 @@ function createRegionPicker(sidoEl, sggEl, dongEl) {
     sggEl.disabled = false;
     const map = REGIONS[sido] || {};
     const keys = Object.keys(map);
-    const head = `<option value="${sido}">${sido} 전체</option>`;
-    sggEl.innerHTML =
-      head + keys.map((g) => `<option value="${g}">${g}</option>`).join('');
+    // "시/도 전체" + 각 시/군/구. 구로 나뉜 시(수원시 등)는 그 앞에 "OO시 전체(모든 구·동)"를
+    // 끼워 넣어, 구 하나가 아닌 시 전체를 한 번에 선택할 수 있게 한다.
+    const seenCity = new Set();
+    let html = `<option value="${sido}">${sido} 전체</option>`;
+    for (const g of keys) {
+      const city = cityBaseOf(g);
+      if (city && !seenCity.has(city)) {
+        seenCity.add(city);
+        html += `<option value="${city}">${city} 전체 (모든 구·동)</option>`;
+      }
+      html += `<option value="${g}">${g}</option>`;
+    }
+    sggEl.innerHTML = html;
     if (selected) sggEl.value = selected;
     fillDong();
   }
@@ -82,6 +99,14 @@ function createRegionPicker(sidoEl, sggEl, dongEl) {
       // 2) 시/군/구명
       for (const [sido, map] of Object.entries(REGIONS)) {
         if (map[location]) {
+          sidoEl.value = sido;
+          fillSgg(location);
+          return;
+        }
+      }
+      // 2-1) 구로 나뉜 시의 통합값(예: 수원시) → "OO시 전체(모든 구·동)" 선택
+      for (const [sido, map] of Object.entries(REGIONS)) {
+        if (Object.keys(map).some((g) => cityBaseOf(g) === location)) {
           sidoEl.value = sido;
           fillSgg(location);
           return;

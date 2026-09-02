@@ -221,6 +221,28 @@ test('당근 검색 전체 흐름에서도 쿠키 응답의 서초4동 매물을
   }
 });
 
+test('수원시(시 전체) 감시는 모든 구·동 매물을 매칭하고 타 지역은 제외한다', () => {
+  const watch = { keyword: '모두', allItems: true, location: '수원시', maxPrice: 0 };
+  // 4개 구 각각의 동 매물이 모두 통과해야 한다.
+  assert.equal(matchesWatch({ title: '책상', region: '수원시 영통구 매탄동', priceValue: 0 }, watch), true);
+  assert.equal(matchesWatch({ title: '의자', region: '권선동', priceValue: 0 }, watch), true); // 권선구
+  assert.equal(matchesWatch({ title: '책장', region: '정자동', priceValue: 0 }, watch), true); // 장안구
+  assert.equal(matchesWatch({ title: '선반', region: '행궁동', priceValue: 0 }, watch), true); // 팔달구
+  // 수원이 아닌 지역은 걸러진다.
+  assert.equal(matchesWatch({ title: '테이블', region: '서초4동', priceValue: 0 }, watch), false);
+  // 지역 정보가 없는 카드는 오알림 방지를 위해 제외한다.
+  assert.equal(matchesWatch({ title: '테이블', region: '', priceValue: 0 }, watch), false);
+});
+
+test('수원시 감시는 당근 기본지역(서초4동) 대신 수원 중심 동네를 중심점으로 쓴다', () => {
+  assert.equal(resolveDaangnRegion({ location: '수원시' }), '매탄동-4535');
+  // 사용자가 지정한 지역 코드는 그대로 우선한다.
+  assert.equal(
+    resolveDaangnRegion({ location: '수원시', daangnRegion: '권선동-1234' }),
+    '권선동-1234'
+  );
+});
+
 test('알림 이메일 하단에 중고 알리미 대시보드 링크를 표시한다', () => {
   const watch = { keyword: '화분', location: '매탄동' };
   const items = [{ id: 'item1', title: '화분 나눔', url: 'https://example.com/item1' }];
