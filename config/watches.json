@@ -42,14 +42,14 @@
         "daangn"
       ],
       "maxPrice": 0,
-      "maxAgeDays": 2,
+      "maxAgeDays": 1,
       "email": "leemgs@gmail.com",
       "enabled": true
     },
     {
-      "id": "투명아크릴판-경기도",
+      "id": "투명아크릴판-화성시",
       "keyword": "투명아크릴판",
-      "location": "경기도",
+      "location": "화성시",
       "maxPrice": 40000,
       "email": "leemgs@gmail.com",
       "enabled": true
