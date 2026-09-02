@@ -397,18 +397,52 @@ function priceWithinMax(item, watch) {
   return item.priceValue <= maxP;
 }
 
+// 등록일 필터의 "가장 이른 허용 시각"을 구한다.
+// - maxAgeHours: 지금(now)으로부터 정확히 N시간 전까지의 롤링 윈도우 (예: 3시간전)
+// - maxAgeDays : 오늘 0시를 기준으로 N일 전까지의 달력 윈도우 (예: 0=오늘, 3=최근 3일)
+// 시간 단위가 지정되면 시간을, 아니면 일을 사용한다. 둘 다 없으면 null(제한 없음).
+function earliestAllowedAt(watch, now = Date.now()) {
+  const hasHours = watch.maxAgeHours !== '' && watch.maxAgeHours != null;
+  if (hasHours) {
+    const hours = Number(watch.maxAgeHours);
+    if (Number.isInteger(hours) && hours >= 0) return now - hours * 3600000;
+  }
+  const hasDays = watch.maxAgeDays !== '' && watch.maxAgeDays != null;
+  if (hasDays) {
+    const days = Number(watch.maxAgeDays);
+    if (Number.isInteger(days) && days >= 0) {
+      const startOfToday = new Date(now);
+      startOfToday.setHours(0, 0, 0, 0);
+      return startOfToday.getTime() - days * 86400000;
+    }
+  }
+  return null; // 미설정/잘못된 설정 → 제한 없음
+}
+
 function ageWithinMax(item, watch, now = Date.now()) {
-  if (watch.maxAgeDays === '' || watch.maxAgeDays == null) return true;
-  const days = Number(watch.maxAgeDays);
-  if (!Number.isInteger(days) || days < 0) return true;
+  const earliest = earliestAllowedAt(watch, now);
+  if (earliest == null) return true;
   const published = Date.parse(item.publishedAt || '');
   // 당근 검색 카드가 등록일을 내려주지 않는 경우가 많다. 날짜 불명 매물을 전부 버리면
   // 정상적인 신규 나눔까지 0건이 되므로, 날짜를 확인할 수 있을 때만 범위를 적용한다.
   if (!Number.isFinite(published)) return true;
-  const startOfToday = new Date(now);
-  startOfToday.setHours(0, 0, 0, 0);
-  const earliest = startOfToday.getTime() - days * 86400000;
   return published >= earliest && published <= now;
+}
+
+// 알림 메일/이슈에 표시할 등록일 조건 문구. (예: "최근 3시간 이내", "최근 3일 이내")
+function describeMaxAge(watch) {
+  if (!watch) return '';
+  const hasHours = watch.maxAgeHours !== '' && watch.maxAgeHours != null;
+  if (hasHours) {
+    const hours = Number(watch.maxAgeHours);
+    if (Number.isInteger(hours) && hours >= 0) return `최근 ${hours}시간 이내`;
+  }
+  const hasDays = watch.maxAgeDays !== '' && watch.maxAgeDays != null;
+  if (hasDays) {
+    const days = Number(watch.maxAgeDays);
+    if (Number.isInteger(days) && days >= 0) return `최근 ${days}일 이내`;
+  }
+  return '';
 }
 
 function isGenericFreeKeyword(watch) {
@@ -643,4 +677,5 @@ module.exports = {
   matchesWatch,
   searchDaangn,
   normalize,
+  describeMaxAge,
 };

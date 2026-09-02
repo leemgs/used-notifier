@@ -9,6 +9,7 @@ const {
   matchesWatch,
   parseItems: parseDaangn,
   searchDaangn,
+  describeMaxAge,
 } = require('../daangn');
 const { parseItems: parseJoongna } = require('../joongna');
 const { parseItems: parseBunjang } = require('../bunjang');
@@ -142,6 +143,32 @@ test('나눔 등록일 범위는 확인 가능한 날짜에 적용하고 등록�
   assert.equal(matchesWatch({ title: '의자', priceValue: 0, publishedAt: new Date(now - 86400000).toISOString() }, watch), true);
   assert.equal(matchesWatch({ title: '의자', priceValue: 0, publishedAt: new Date(now - 5 * 86400000).toISOString() }, watch), false);
   assert.equal(matchesWatch({ title: '의자', priceValue: 0 }, watch), true);
+});
+
+test('시간 단위 등록일 범위(maxAgeHours)는 지금부터 롤링 윈도우로 적용한다', () => {
+  const now = Date.now();
+  const watch = { keyword: '모두', location: '', maxPrice: 0, maxAgeHours: 3 };
+  // 3시간 이내는 통과, 그 이전은 제외
+  assert.equal(matchesWatch({ title: '의자', priceValue: 0, publishedAt: new Date(now - 2 * 3600000).toISOString() }, watch), true);
+  assert.equal(matchesWatch({ title: '의자', priceValue: 0, publishedAt: new Date(now - 4 * 3600000).toISOString() }, watch), false);
+  // 등록일 불명은 놓치지 않는다
+  assert.equal(matchesWatch({ title: '의자', priceValue: 0 }, watch), true);
+});
+
+test('maxAgeHours 는 maxAgeDays 보다 우선한다', () => {
+  const now = Date.now();
+  // 시간(1h)이 우선이라 6시간 전 매물은 제외되어야 한다(일=3이 있어도).
+  const watch = { keyword: '모두', location: '', maxPrice: 0, maxAgeDays: 3, maxAgeHours: 1 };
+  assert.equal(matchesWatch({ title: '의자', priceValue: 0, publishedAt: new Date(now - 30 * 60000).toISOString() }, watch), true);
+  assert.equal(matchesWatch({ title: '의자', priceValue: 0, publishedAt: new Date(now - 6 * 3600000).toISOString() }, watch), false);
+});
+
+test('describeMaxAge 는 시간/일 조건 문구를 만든다', () => {
+  assert.equal(describeMaxAge({ maxAgeHours: 3 }), '최근 3시간 이내');
+  assert.equal(describeMaxAge({ maxAgeDays: 2 }), '최근 2일 이내');
+  assert.equal(describeMaxAge({ maxAgeDays: 3, maxAgeHours: 6 }), '최근 6시간 이내'); // 시간 우선
+  assert.equal(describeMaxAge({ maxAgeDays: 0 }), '최근 0일 이내');
+  assert.equal(describeMaxAge({}), '');
 });
 
 test('영통구 감시는 당근의 서초 기본지역 대신 매탄동 대표 지역을 자동 사용한다', async () => {

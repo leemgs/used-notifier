@@ -12,6 +12,7 @@
 const nodemailer = require('nodemailer');
 const { chatHelperLink } = require('./links');
 const { themeFor } = require('./theme');
+const { describeMaxAge } = require('./daangn');
 
 const DASHBOARD_URL = 'https://leemgs.github.io/used-notifier/';
 
@@ -60,7 +61,8 @@ async function sendNewItemsEmail({ to, watch, items, chatMessage, source, siteNa
 }
 
 function buildText(watch, items, message, site, theme) {
-  const ageCondition = watch.maxAgeDays == null ? '' : ` / 최근 ${watch.maxAgeDays}일 이내 등록`;
+  const ageText = describeMaxAge(watch);
+  const ageCondition = ageText ? ` / ${ageText} 등록` : '';
   const lines = [
     `${site}에 '${watch.keyword}' 키워드 / '${watch.location || '전체'}' 지역${ageCondition} 조건의 신규 매물이 올라왔습니다.`,
     '',
@@ -93,6 +95,7 @@ function esc(s) {
 function buildHtml(watch, items, message, site, theme) {
   const t = theme || themeFor(null);
   const siteName = site || t.name;
+  const ageText = describeMaxAge(watch);
   const cards = items
     .map(
       (it) => `
@@ -133,7 +136,7 @@ function buildHtml(watch, items, message, site, theme) {
       </div>
       <div style="padding:24px;">
       <p style="margin:0 0 16px;color:#555;font-size:14px;">
-        <b style="color:${t.dark};">${esc(siteName)}</b> · 키워드 <b>'${esc(watch.keyword)}'</b> · 지역 <b>'${esc(watch.location || '전체')}'</b>${watch.maxAgeDays == null ? '' : ` · 최근 <b>${esc(watch.maxAgeDays)}일</b> 이내 등록`} 조건의 신규 매물 <b>${items.length}</b>건
+        <b style="color:${t.dark};">${esc(siteName)}</b> · 키워드 <b>'${esc(watch.keyword)}'</b> · 지역 <b>'${esc(watch.location || '전체')}'</b>${ageText ? ` · <b>${esc(ageText)}</b> 등록` : ''} 조건의 신규 매물 <b>${items.length}</b>건
       </p>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${cards}</table>
       <div style="margin:18px 0 0;padding:12px 14px;background:${t.soft};border-radius:8px;">

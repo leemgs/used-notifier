@@ -77,9 +77,12 @@ form.addEventListener('submit', (e) => {
   };
   if (!watch.allItems) delete watch.allItems;
   if (maxPrice !== undefined) watch.maxPrice = maxPrice;
-  const maxAgeDays = document.getElementById('max-age-days').value;
-  if (document.getElementById('free-share').checked && maxAgeDays !== '') {
-    watch.maxAgeDays = parseInt(maxAgeDays, 10);
+  const maxAgeValue = document.getElementById('max-age-value').value;
+  const maxAgeUnit = document.getElementById('max-age-unit').value;
+  if (document.getElementById('free-share').checked && maxAgeValue !== '') {
+    const n = parseInt(maxAgeValue, 10);
+    if (maxAgeUnit === 'hour') watch.maxAgeHours = n;
+    else watch.maxAgeDays = n;
   }
   if (sites.length) watch.sites = sites; // 선택한 사이트 명시 (미선택 시 생략 → 기본 전체)
 

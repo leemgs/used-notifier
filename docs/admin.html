@@ -178,9 +178,15 @@
           <span class="hint">체크하면 희망 금액이 자동으로 0원이 됩니다.</span>
         </label>
         <label id="f-max-age-wrap" class="hidden">
-          등록일 범위 · 며칠 전까지
-          <input id="f-max-age-days" type="number" inputmode="numeric" min="0" step="1" placeholder="예: 3" />
-          <span class="hint" style="font-weight:400;">0은 오늘, 3은 최근 3일 이내입니다. 비우면 등록일 제한 없음.</span>
+          등록일 범위 · 얼마 전까지
+          <div class="row">
+            <input id="f-max-age-value" type="number" inputmode="numeric" min="0" step="1" placeholder="예: 3" style="flex:1;" />
+            <select id="f-max-age-unit" style="flex:1;">
+              <option value="day">일 전까지</option>
+              <option value="hour">시간 전까지</option>
+            </select>
+          </div>
+          <span class="hint" style="font-weight:400;">예: 3+일=최근 3일, 6+시간=최근 6시간 이내입니다. 일은 0=오늘 기준, 시간은 지금부터 계산합니다. 비우면 등록일 제한 없음.</span>
         </label>
         <label>
           알림 받을 이메일 (비우면 기본값 사용)
