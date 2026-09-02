@@ -48,8 +48,9 @@
             "description": "구매 가능 지역 (매물 지역/제목에 포함되면 매칭). 예: 수원시"
           },
           "daangnRegion": {
-            "type": "string",
-            "description": "당근 검색 URL의 in 파라미터 값. 예: 매탄동-4535"
+            "type": ["string", "array"],
+            "items": { "type": "string" },
+            "description": "당근 검색 URL의 in 파라미터 값(동/구/시 단위). 예: 매탄동-4535, 수원시-영통구-1293, 수원시-4179. 콤마 구분 문자열 또는 배열로 여러 코드를 지정하면 각각 조회해 병합한다. 비우면 location에 맞는 단위로 자동 조회."
           },
           "sites": {
             "type": "array",

@@ -33,15 +33,34 @@ const { formatPrice, parsePriceValue } = require('./price');
 const DEFAULT_SEARCH_URL = 'https://www.daangn.com/kr/buy-sell/?search={kw}';
 
 // 당근 검색은 in=이 없으면 실행 환경과 무관하게 서초4동 결과를 돌려준다. 관리 화면에서
-// 시/군/구만 선택한 기존 감시도 엉뚱한 기본 지역으로 조회되지 않도록 대표 동네를 사용한다.
-// 사용자가 daangnRegion을 직접 지정하면 그 값을 항상 우선한다.
-// 대표 동네는 당근 검색의 "중심점"일 뿐이다(watch.daangnRegion 처럼 결과를 그 동네로
-// 엄격히 제한하지 않는다). 시 전체(수원시) 감시는 시의 중앙에 가까운 동네를 중심점으로 잡아
-// 서초4동 기본지역 폴백을 피하고, 실제 지역 일치는 넓은 location('수원시') 조건으로 판단한다.
-const DEFAULT_REGION_BY_LOCATION = Object.freeze({
-  수원시: '매탄동-4535',
-  수원시영통구: '매탄동-4535',
-  영통구: '매탄동-4535',
+// 시/군/구만 선택한 기존 감시도 엉뚱한 기본 지역으로 조회되지 않도록 지역 코드를 자동 지정한다.
+//
+// ⚠️ 핵심: 당근의 in= 코드는 "동 단위"(예: 매탄동-4535)뿐 아니라 "구 단위"(예:
+//   수원시-영통구-1293)·"시 단위"(예: 수원시-4179) 코드도 지원한다. 동 코드 하나로 조회하면
+//   그 동네 반경 매물만 나오므로, 시/군/구 전체를 선택했는데도 대표 동(매탄동) 매물만 오는
+//   문제가 생긴다. 따라서 선택한 행정 단위에 맞는 코드(시→시 코드, 구→구 코드)를 사용한다.
+// 값은 코드 배열이다(여러 코드를 조회해 병합·중복제거). 대부분 한 개면 충분하지만, 구 전역
+//   코드를 확보하지 못한 구는 시 전역 코드로 넓게 조회한 뒤 location 필터로 범위를 좁힌다.
+// 사용자가 daangnRegion을 직접 지정하면(문자열/콤마구분/배열) 그 값을 항상 우선한다.
+const DEFAULT_REGIONS_BY_LOCATION = Object.freeze({
+  // 시 단위 선택: 수원시 전역 코드로 조회 → 시내 모든 구/동 매물이 후보에 들어온다.
+  수원시: ['수원시-4179'],
+  // 구 단위 선택: 해당 구 전역 코드로 조회한다(대표 동 하나에 고정하지 않는다).
+  수원시영통구: ['수원시-영통구-1293'],
+  영통구: ['수원시-영통구-1293'],
+  수원시권선구: ['수원시-권선구-1270'],
+  권선구: ['수원시-권선구-1270'],
+  // 구 전역 코드를 아직 확보하지 못한 구는 시 전역 코드로 조회하고, 이후 location 필터가
+  //   해당 구 범위로 좁힌다(다른 구 매물은 지역 대조에서 걸러진다).
+  수원시장안구: ['수원시-4179'],
+  장안구: ['수원시-4179'],
+  수원시팔달구: ['수원시-4179'],
+  팔달구: ['수원시-4179'],
+});
+
+// 지역 코드가 시/도만 알려진 경우 그 시 전역 코드로 폴백 (예: '수원시XX동' → 수원시-4179).
+const CITY_FALLBACK_CODE = Object.freeze({
+  수원시: '수원시-4179',
 });
 
 // 매물 상세 페이지의 기본 도메인 (상대경로 -> 절대경로 변환용)
@@ -63,10 +82,45 @@ function buildSearchUrl(keyword, region) {
   return url;
 }
 
+// daangnRegion 입력(문자열/콤마구분 문자열/배열)을 코드 배열로 정규화한다.
+function parseRegionList(value) {
+  if (Array.isArray(value)) {
+    return value.map((v) => String(v || '').trim()).filter(Boolean);
+  }
+  return String(value || '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
+// 사용자가 직접 지정한 지역 코드만 반환(자동 대표 코드는 제외). 엄격 지역 대조에 쓴다.
+function explicitRegions(watch) {
+  return parseRegionList(watch && watch.daangnRegion);
+}
+
+// 감시 항목을 조회할 당근 지역 코드 배열을 결정한다.
+//   1) 사용자가 직접 지정한 daangnRegion(들)이 있으면 최우선
+//   2) location에 맞는 기본 코드(시→시 코드, 구→구 코드)
+//   3) 코드를 모르는 시/구는 상위 시 전역 코드로 폴백
+//   4) 그래도 없으면 [] (in= 없이 조회 → 당근 기본지역, 이후 location 필터가 처리)
+function resolveDaangnRegions(watch) {
+  const explicit = explicitRegions(watch);
+  if (explicit.length) return explicit;
+
+  const loc = normalize(watch && watch.location);
+  if (!loc) return [];
+  if (DEFAULT_REGIONS_BY_LOCATION[loc]) return [...DEFAULT_REGIONS_BY_LOCATION[loc]];
+
+  // 시 접두어로 폴백 (예: 미등록 '수원시XX동' → 수원시 전역 코드)
+  for (const city of Object.keys(CITY_FALLBACK_CODE)) {
+    if (loc.startsWith(normalize(city))) return [CITY_FALLBACK_CODE[city]];
+  }
+  return [];
+}
+
+// 하위 호환용: 대표 지역 코드 한 개를 반환(없으면 빈 문자열).
 function resolveDaangnRegion(watch) {
-  const explicit = String((watch && watch.daangnRegion) || '').trim();
-  if (explicit) return explicit;
-  return DEFAULT_REGION_BY_LOCATION[normalize(watch && watch.location)] || '';
+  return resolveDaangnRegions(watch)[0] || '';
 }
 
 async function fetchSearchHtml(keyword, region) {
@@ -478,8 +532,16 @@ function itemMatchesLocation(item, location) {
   return false;
 }
 
+// 지역 코드에서 조회 대상 지역명을 뽑는다.
+//   매탄동-4535    → 매탄동
+//   수원시-영통구-1293 → 수원시 영통구 (내부 하이픈은 공백으로: itemMatchesLocation이 파싱)
+//   수원시-4179    → 수원시
 function regionNameFromSlug(region) {
-  return String(region || '').trim().replace(/-\d+$/, '');
+  return String(region || '')
+    .trim()
+    .replace(/-\d+$/, '') // 끝의 숫자 ID 제거
+    .replace(/-/g, ' ') // 시-구 형태의 내부 하이픈 → 공백
+    .trim();
 }
 
 function matchesWatch(item, watch) {
@@ -500,10 +562,10 @@ function matchesWatch(item, watch) {
 
   // in= 값이 잘못되거나 당근이 기본 지역으로 폴백해도 다른 동네를 알리지 않도록,
   // URL의 지역 slug(매탄동-4535 → 매탄동)도 실제 카드 지역과 반드시 대조한다.
-  // 사용자가 직접 입력한 지역 코드는 해당 동네로 엄격히 제한한다. 시/군/구 감시에
-  // 자동 적용한 대표 동네는 검색의 중심점일 뿐이므로 위의 넓은 location 조건을 유지한다.
-  const scopedLocation = regionNameFromSlug(watch.daangnRegion);
-  if (scopedLocation && !itemMatchesLocation(item, scopedLocation)) return false;
+  // 사용자가 직접 입력한 지역 코드는 그 지역으로 엄격히 제한한다(여러 개면 하나라도 일치하면 통과).
+  // 시/군/구 감시에 자동 적용한 코드는 검색 범위일 뿐이므로 위의 넓은 location 조건을 유지한다.
+  const scoped = explicitRegions(watch).map(regionNameFromSlug).filter(Boolean);
+  if (scoped.length && !scoped.some((name) => itemMatchesLocation(item, name))) return false;
 
   // 지역을 지정했는데 카드 지역을 파싱하지 못한 경우는 오알림 방지를 위해 fail-closed.
   if (!item.region && !isNationwide(watch.location)) return false;
@@ -516,29 +578,50 @@ function matchesWatch(item, watch) {
  * @returns {Promise<Array>} 조건을 만족하는 매물 목록
  */
 async function searchDaangn(watch) {
-  const daangnRegion = resolveDaangnRegion(watch);
-  const html = await fetchSearchHtml(searchKeywordForWatch(watch), daangnRegion);
-  const items = parseItems(html);
+  const regions = resolveDaangnRegions(watch);
+  const keyword = searchKeywordForWatch(watch);
+  const debug = process.env.DEBUG === 'true';
+
+  // 시/구 전역 조회는 코드 하나면 충분하지만, 여러 코드가 지정되면 각각 조회해 병합한다.
+  // in= 없이(regions 빈 배열) 조회하는 기존 경로도 그대로 유지한다.
+  const fetchTargets = regions.length ? regions : [''];
+  const byId = new Map();
+  let totalParsed = 0;
+  let htmlSample = '';
+
+  for (const region of fetchTargets) {
+    const html = await fetchSearchHtml(keyword, region);
+    const items = parseItems(html);
+    totalParsed += items.length;
+    if (!htmlSample) htmlSample = html;
+    // id 기준으로 여러 지역 조회 결과를 합친다(같은 매물이 인접 지역에서 중복 노출될 수 있음).
+    for (const it of items) if (it && it.id != null) byId.set(String(it.id), it);
+
+    if (debug) {
+      const rawLinks = (html.match(/\/kr\/buy-sell\//g) || []).length;
+      const hasNextData = html.includes('__NEXT_DATA__') || html.includes('__next_f');
+      console.log(
+        `    [DEBUG] HTML ${html.length}자, 파싱 ${items.length}건` +
+          (region ? ` (in=${region} 지역검색)` : ' (지역코드 없음: 당근 기본지역 응답)') +
+          (process.env.DAANGN_COOKIE ? ' (로그인 쿠키)' : '') +
+          `, buy-sell 링크 ${rawLinks}회, RSC/NEXT ${hasNextData ? '있음' : '없음'}`
+      );
+    }
+  }
+
+  const items = Array.from(byId.values());
   // 쿠키나 in= 응답을 신뢰해 지역 검사를 생략하지 않는다. 당근이 잘못된/기본 지역으로
   // 폴백할 수 있으므로 모든 카드를 watch.location 및 daangnRegion과 다시 대조한다.
   const matched = items.filter((it) => matchesWatch(it, watch));
 
-  if (process.env.DEBUG === 'true') {
+  if (debug) {
     console.log(
-      `    [DEBUG] HTML ${html.length}자, 파싱된 매물 ${items.length}건, 매칭 ${matched.length}건` +
-        (daangnRegion ? ` (in=${daangnRegion} 지역검색)` : ' (지역코드 없음: 당근 기본지역 응답)') +
-        (process.env.DAANGN_COOKIE ? ' (로그인 쿠키)' : '') +
+      `    [DEBUG] 조회 지역 ${fetchTargets.map((r) => r || '(기본)').join(', ')} → 병합 ${items.length}건(누적 파싱 ${totalParsed}), 매칭 ${matched.length}건` +
         (isNationwide(watch.location) ? ' (전국 검색)' : '')
-    );
-    // 매물 링크가 페이지에 몇 번 등장하는지(파서와 무관한 원자료 신호)
-    const rawLinks = (html.match(/\/kr\/buy-sell\//g) || []).length;
-    const hasNextData = html.includes('__NEXT_DATA__') || html.includes('__next_f');
-    console.log(
-      `    [DEBUG] buy-sell 링크 흔적 ${rawLinks}회, RSC/NEXT ${hasNextData ? '있음' : '없음'}`
     );
     if (items.length === 0) {
       // 파싱 0건이면 페이지 앞부분을 덤프해 차단/리다이렉트/JS쉘 여부 확인
-      const snippet = html.replace(/\s+/g, ' ').slice(0, 400);
+      const snippet = String(htmlSample).replace(/\s+/g, ' ').slice(0, 400);
       console.log(`    [DEBUG] HTML 앞부분: ${snippet}`);
     }
     items.slice(0, 5).forEach((it) =>
@@ -672,6 +755,7 @@ function pickPublishedAt(inner) {
 module.exports = {
   buildSearchUrl,
   resolveDaangnRegion,
+  resolveDaangnRegions,
   fetchSearchHtml,
   parseItems,
   matchesWatch,

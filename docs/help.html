@@ -81,13 +81,14 @@
       <h2>🥕 당근 "내 동네" 설정 (중요)</h2>
       <p class="hint" style="font-size:14px;">
         당근 웹 검색은 <b>지역을 지정하지 않으면 기본 지역(서초4동)</b> 결과만 나옵니다.
-        내 동네(예: 매탄동) 매물을 받으려면 감시 항목의 <b>당근 지역 코드</b>에
-        당근 검색 URL의 <code>in=</code> 값을 넣어주세요(로그인 불필요).
+        <b>지역</b>에 시/구/동을 지정하면 그 단위에 맞는 코드로 <b>자동 조회</b>합니다(시→시 전역,
+        구→구 전역). 특정 동만 좁혀 보거나 자동 코드가 없는 지역은 <b>당근 지역 코드</b>에
+        당근 검색 URL의 <code>in=</code> 값을 직접 넣어주세요(로그인 불필요).
       </p>
       <ol class="secrets">
-        <li>PC/모바일 브라우저에서 <a href="https://www.daangn.com/kr/buy-sell/s/" target="_blank" rel="noopener">daangn.com</a> 검색을 열고 왼쪽 위 <b>지역</b>을 내 동네(예: 매탄동)로 변경</li>
-        <li>아무 키워드나 검색한 뒤 주소창 URL의 <code>in=</code> 뒤 값을 복사 — 예: <code>…?in=<b>매탄동-4535</b>&search=…</code></li>
-        <li>감시 항목의 <b>당근 지역 코드</b> 칸에 <code>매탄동-4535</code> 를 붙여넣기</li>
+        <li>PC/모바일 브라우저에서 <a href="https://www.daangn.com/kr/buy-sell/s/" target="_blank" rel="noopener">daangn.com</a> 검색을 열고 왼쪽 위 <b>지역</b>을 원하는 시/구/동으로 변경</li>
+        <li>아무 키워드나 검색한 뒤 주소창 URL의 <code>in=</code> 뒤 값을 복사 — 동 <code>…?in=<b>매탄동-4535</b>…</code>, 구 <code>…?in=<b>수원시-영통구-1293</b>…</code>, 시 <code>…?in=<b>수원시-4179</b>…</code></li>
+        <li>감시 항목의 <b>당근 지역 코드</b> 칸에 붙여넣기 (콤마로 여러 코드 지정 시 각각 조회해 병합)</li>
       </ol>
       <p class="hint">
         이 값이 있으면 당근을 그 동네로 검색하므로 앱에서 보는 것과 같은 결과를 받습니다(지역 필터를 대체).

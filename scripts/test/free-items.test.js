@@ -6,6 +6,7 @@ const { formatPrice } = require('../price');
 const {
   buildSearchUrl,
   resolveDaangnRegion,
+  resolveDaangnRegions,
   matchesWatch,
   parseItems: parseDaangn,
   searchDaangn,
@@ -171,8 +172,9 @@ test('describeMaxAge 는 시간/일 조건 문구를 만든다', () => {
   assert.equal(describeMaxAge({}), '');
 });
 
-test('영통구 감시는 당근의 서초 기본지역 대신 매탄동 대표 지역을 자동 사용한다', async () => {
-  assert.equal(resolveDaangnRegion({ location: '수원시영통구' }), '매탄동-4535');
+test('영통구 감시는 당근의 서초 기본지역 대신 구 전역 코드를 자동 사용한다', async () => {
+  // 구 단위 선택 → 대표 동(매탄동) 하나가 아니라 구 전역 코드로 조회해야 구 전체가 후보에 든다.
+  assert.equal(resolveDaangnRegion({ location: '수원시영통구' }), '수원시-영통구-1293');
   assert.equal(
     resolveDaangnRegion({ location: '수원시영통구', daangnRegion: '영통동-1234' }),
     '영통동-1234'
@@ -188,8 +190,73 @@ test('영통구 감시는 당근의 서초 기본지역 대신 매탄동 대표 
     await searchDaangn({ keyword: '모두', location: '수원시영통구', maxPrice: 0 });
     assert.equal(
       requestedUrl,
-      'https://www.daangn.com/kr/buy-sell/?search=%EB%82%98%EB%88%94&in=%EB%A7%A4%ED%83%84%EB%8F%99-4535'
+      'https://www.daangn.com/kr/buy-sell/?search=%EB%82%98%EB%88%94&in=%EC%88%98%EC%9B%90%EC%8B%9C-%EC%98%81%ED%86%B5%EA%B5%AC-1293'
     );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('시 단위 선택은 시 전역 코드로 조회하고 시내 모든 구를 허용한다', async () => {
+  assert.deepEqual(resolveDaangnRegions({ location: '수원시' }), ['수원시-4179']);
+  // 코드 미확보 구(장안/팔달)는 시 전역 코드로 폴백한 뒤 location 필터로 좁힌다.
+  assert.deepEqual(resolveDaangnRegions({ location: '수원시장안구' }), ['수원시-4179']);
+
+  const originalFetch = global.fetch;
+  let requestedUrl = '';
+  global.fetch = async (url) => {
+    requestedUrl = url;
+    return { ok: true, text: async () => '' };
+  };
+  try {
+    await searchDaangn({ keyword: '모두', location: '수원시', maxPrice: 0 });
+    assert.equal(
+      requestedUrl,
+      'https://www.daangn.com/kr/buy-sell/?search=%EB%82%98%EB%88%94&in=%EC%88%98%EC%9B%90%EC%8B%9C-4179'
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('시 단위 감시는 시내 여러 구 매물을 통과시키되 다른 도시는 막는다', () => {
+  const watch = { keyword: '모두', allItems: true, location: '수원시', maxPrice: 0 };
+  assert.equal(matchesWatch({ title: '의자 나눔', region: '영통구 매탄동', priceValue: 0 }, watch), true);
+  assert.equal(matchesWatch({ title: '책상 나눔', region: '권선구 권선동', priceValue: 0 }, watch), true);
+  assert.equal(matchesWatch({ title: '소파 나눔', region: '팔달구 인계동', priceValue: 0 }, watch), true);
+  assert.equal(matchesWatch({ title: '책장 나눔', region: '서초4동', priceValue: 0 }, watch), false);
+});
+
+test('구 단위 감시는 구 전역 조회 결과에서 다른 구 매물을 걸러낸다', () => {
+  // 구 전역 코드는 자동 코드이므로 엄격 대조가 아닌 넓은 location 조건으로 구 범위를 좁힌다.
+  const watch = { keyword: '모두', allItems: true, location: '수원시영통구', maxPrice: 0 };
+  assert.equal(matchesWatch({ title: '의자 나눔', region: '영통구 영통동', priceValue: 0 }, watch), true);
+  assert.equal(matchesWatch({ title: '책상 나눔', region: '권선구 권선동', priceValue: 0 }, watch), false);
+});
+
+test('여러 지역 코드를 콤마로 지정하면 각각 조회해 병합한다', async () => {
+  const originalFetch = global.fetch;
+  const requested = [];
+  global.fetch = async (url) => {
+    requested.push(url);
+    // 지역별로 서로 다른 매물 카드를 반환해 병합/중복제거를 확인한다.
+    const id = requested.length === 1 ? 'aaa111' : 'bbb222';
+    return {
+      ok: true,
+      text: async () =>
+        `<a href="/kr/buy-sell/item-${id}/"><span class="title">의자 나눔</span><span class="price">나눔</span><span class="region">영통동</span></a>`,
+    };
+  };
+  try {
+    const found = await searchDaangn({
+      keyword: '모두',
+      allItems: true,
+      location: '수원시영통구',
+      daangnRegion: '매탄동-4535, 영통동-4537',
+      maxPrice: 0,
+    });
+    assert.equal(requested.length, 2);
+    assert.equal(found.length, 2);
   } finally {
     global.fetch = originalFetch;
   }
@@ -261,8 +328,9 @@ test('수원시(시 전체) 감시는 모든 구·동 매물을 매칭하고 타
   assert.equal(matchesWatch({ title: '테이블', region: '', priceValue: 0 }, watch), false);
 });
 
-test('수원시 감시는 당근 기본지역(서초4동) 대신 수원 중심 동네를 중심점으로 쓴다', () => {
-  assert.equal(resolveDaangnRegion({ location: '수원시' }), '매탄동-4535');
+test('수원시 감시는 당근 기본지역(서초4동) 대신 시 전역 코드로 조회한다', () => {
+  // 대표 동(매탄동) 하나가 아니라 시 전역 코드를 써야 시내 모든 구/동이 후보에 든다.
+  assert.equal(resolveDaangnRegion({ location: '수원시' }), '수원시-4179');
   // 사용자가 지정한 지역 코드는 그대로 우선한다.
   assert.equal(
     resolveDaangnRegion({ location: '수원시', daangnRegion: '권선동-1234' }),
