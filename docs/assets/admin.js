@@ -365,7 +365,13 @@ function openEdit(index) {
   $('f-maxprice').value = w.maxPrice !== undefined ? Number(w.maxPrice).toLocaleString('ko-KR') : '';
   $('f-free-share').checked = Number(w.maxPrice) === 0 && w.maxPrice !== undefined;
   $('f-maxprice').disabled = $('f-free-share').checked;
-  $('f-max-age-days').value = w.maxAgeDays !== undefined ? w.maxAgeDays : '';
+  if (w.maxAgeHours !== undefined) {
+    $('f-max-age-value').value = w.maxAgeHours;
+    $('f-max-age-unit').value = 'hour';
+  } else {
+    $('f-max-age-value').value = w.maxAgeDays !== undefined ? w.maxAgeDays : '';
+    $('f-max-age-unit').value = 'day';
+  }
   $('f-max-age-wrap').classList.toggle('hidden', !$('f-free-share').checked);
   $('f-email').value = formatEmails(w.email);
   $('f-msg').value = w.chatMessage || '';
@@ -396,6 +402,14 @@ $('edit-form').addEventListener('submit', (e) => {
   const index = +$('edit-index').value;
   const keyword = $('f-keyword').value.trim();
   const location = regionPicker.getValue();
+  // 등록일 범위: 단위(일/시간)에 따라 maxAgeDays 또는 maxAgeHours 로 저장한다.
+  let maxAgeDays;
+  let maxAgeHours;
+  if ($('f-free-share').checked && $('f-max-age-value').value !== '') {
+    const n = parseInt($('f-max-age-value').value, 10);
+    if ($('f-max-age-unit').value === 'hour') maxAgeHours = n;
+    else maxAgeDays = n;
+  }
   const entry = {
     id: slugId(keyword, location),
     keyword,
@@ -408,10 +422,8 @@ $('edit-form').addEventListener('submit', (e) => {
       return chosen.length && chosen.length < ALL_SITES.length ? chosen : undefined;
     })(),
     maxPrice: $('f-free-share').checked ? 0 : parseMaxPrice($('f-maxprice').value),
-    maxAgeDays:
-      $('f-free-share').checked && $('f-max-age-days').value !== ''
-        ? parseInt($('f-max-age-days').value, 10)
-        : undefined,
+    maxAgeDays,
+    maxAgeHours,
     email: emailsToStore($('f-email').value),
     chatMessage: $('f-msg').value.trim() || undefined,
     enabled: $('f-enabled').checked,

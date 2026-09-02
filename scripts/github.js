@@ -10,6 +10,7 @@
  */
 
 const { chatHelperLink } = require('./links');
+const { describeMaxAge } = require('./daangn');
 
 const ISSUE_LABEL = '당근마켓-알림';
 // 이메일(Gmail SMTP) 발송 실패를 기록하는 이슈에 붙이는 라벨.
@@ -65,8 +66,9 @@ async function createIssue({ watch, items, chatMessage, source }) {
 function buildIssueBody(watch, items, chatMessage, siteName, siteKey) {
   const message = chatMessage || '안녕하세요. 제가 구매 가능할까요?';
   const site = siteName || '당근마켓';
+  const ageText = describeMaxAge(watch);
   const lines = [
-    `**사이트:** \`${site}\` · **키워드:** \`${watch.keyword}\` · **지역:** \`${watch.location || '전체'}\`${watch.maxAgeDays == null ? '' : ` · **등록일:** 최근 \`${watch.maxAgeDays}일\` 이내`}`,
+    `**사이트:** \`${site}\` · **키워드:** \`${watch.keyword}\` · **지역:** \`${watch.location || '전체'}\`${ageText ? ` · **등록일:** ${ageText}` : ''}`,
     '',
     `${site}에 조건에 맞는 신규 매물 **${items.length}건**이 올라왔습니다.`,
     '',
