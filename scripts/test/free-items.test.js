@@ -120,19 +120,19 @@ test('물품명 모두, 0원, 매탄동은 모든 종류의 매탄동 나눔만 
   assert.equal(matchesWatch({ title: '책상', region: '원천동', priceValue: 0 }, watch), false);
 });
 
-test('물품명 모두인 무료 감시는 당근에서 나눔 검색어로 조회한다', async () => {
+test('물품명 모두인 무료 감시는 당근에서 나눔과 무료 검색 결과를 병합한다', async () => {
   const originalFetch = global.fetch;
-  let requestedUrl = '';
+  const requestedUrls = [];
   global.fetch = async (url) => {
-    requestedUrl = url;
+    requestedUrls.push(url);
     return { ok: true, text: async () => '' };
   };
   try {
     await searchDaangn({ keyword: '모두', location: '매탄동', daangnRegion: '매탄동-4535', maxPrice: 0 });
-    assert.equal(
-      requestedUrl,
-      'https://www.daangn.com/kr/buy-sell/?search=%EB%82%98%EB%88%94&in=%EB%A7%A4%ED%83%84%EB%8F%99-4535'
-    );
+    assert.deepEqual(requestedUrls, [
+      'https://www.daangn.com/kr/buy-sell/?search=%EB%82%98%EB%88%94&in=%EB%A7%A4%ED%83%84%EB%8F%99-4535',
+      'https://www.daangn.com/kr/buy-sell/?search=%EB%AC%B4%EB%A3%8C&in=%EB%A7%A4%ED%83%84%EB%8F%99-4535',
+    ]);
   } finally {
     global.fetch = originalFetch;
   }
@@ -181,39 +181,42 @@ test('영통구 감시는 당근의 서초 기본지역 대신 구 전역 코드
   );
 
   const originalFetch = global.fetch;
-  let requestedUrl = '';
+  const requestedUrls = [];
   global.fetch = async (url) => {
-    requestedUrl = url;
+    requestedUrls.push(url);
     return { ok: true, text: async () => '' };
   };
   try {
     await searchDaangn({ keyword: '모두', location: '수원시영통구', maxPrice: 0 });
-    assert.equal(
-      requestedUrl,
-      'https://www.daangn.com/kr/buy-sell/?search=%EB%82%98%EB%88%94&in=%EC%88%98%EC%9B%90%EC%8B%9C-%EC%98%81%ED%86%B5%EA%B5%AC-1293'
-    );
+    assert.deepEqual(requestedUrls, [
+      'https://www.daangn.com/kr/buy-sell/?search=%EB%82%98%EB%88%94&in=%EC%88%98%EC%9B%90%EC%8B%9C-%EC%98%81%ED%86%B5%EA%B5%AC-1293',
+      'https://www.daangn.com/kr/buy-sell/?search=%EB%AC%B4%EB%A3%8C&in=%EC%88%98%EC%9B%90%EC%8B%9C-%EC%98%81%ED%86%B5%EA%B5%AC-1293',
+    ]);
   } finally {
     global.fetch = originalFetch;
   }
 });
 
 test('시 단위 선택은 시 전역 코드로 조회하고 시내 모든 구를 허용한다', async () => {
-  assert.deepEqual(resolveDaangnRegions({ location: '수원시' }), ['수원시-4179']);
+  assert.deepEqual(resolveDaangnRegions({ location: '수원시' }), [
+    '수원시-4179',
+    '수원시-영통구-1293',
+    '수원시-권선구-1270',
+  ]);
   // 코드 미확보 구(장안/팔달)는 시 전역 코드로 폴백한 뒤 location 필터로 좁힌다.
   assert.deepEqual(resolveDaangnRegions({ location: '수원시장안구' }), ['수원시-4179']);
 
   const originalFetch = global.fetch;
-  let requestedUrl = '';
+  const requestedUrls = [];
   global.fetch = async (url) => {
-    requestedUrl = url;
+    requestedUrls.push(url);
     return { ok: true, text: async () => '' };
   };
   try {
     await searchDaangn({ keyword: '모두', location: '수원시', maxPrice: 0 });
-    assert.equal(
-      requestedUrl,
-      'https://www.daangn.com/kr/buy-sell/?search=%EB%82%98%EB%88%94&in=%EC%88%98%EC%9B%90%EC%8B%9C-4179'
-    );
+    assert.equal(requestedUrls.length, 6);
+    assert.ok(requestedUrls.some((url) => url.includes('search=%EB%82%98%EB%88%94')));
+    assert.ok(requestedUrls.some((url) => url.includes('search=%EB%AC%B4%EB%A3%8C')));
   } finally {
     global.fetch = originalFetch;
   }
@@ -240,7 +243,7 @@ test('여러 지역 코드를 콤마로 지정하면 각각 조회해 병합한�
   global.fetch = async (url) => {
     requested.push(url);
     // 지역별로 서로 다른 매물 카드를 반환해 병합/중복제거를 확인한다.
-    const id = requested.length === 1 ? 'aaa111' : 'bbb222';
+    const id = url.includes('4535') ? 'aaa111' : 'bbb222';
     return {
       ok: true,
       text: async () =>
@@ -255,7 +258,7 @@ test('여러 지역 코드를 콤마로 지정하면 각각 조회해 병합한�
       daangnRegion: '매탄동-4535, 영통동-4537',
       maxPrice: 0,
     });
-    assert.equal(requested.length, 2);
+    assert.equal(requested.length, 4);
     assert.equal(found.length, 2);
   } finally {
     global.fetch = originalFetch;

@@ -43,8 +43,9 @@ const DEFAULT_SEARCH_URL = 'https://www.daangn.com/kr/buy-sell/?search={kw}';
 //   코드를 확보하지 못한 구는 시 전역 코드로 넓게 조회한 뒤 location 필터로 범위를 좁힌다.
 // 사용자가 daangnRegion을 직접 지정하면(문자열/콤마구분/배열) 그 값을 항상 우선한다.
 const DEFAULT_REGIONS_BY_LOCATION = Object.freeze({
-  // 시 단위 선택: 수원시 전역 코드로 조회 → 시내 모든 구/동 매물이 후보에 들어온다.
-  수원시: ['수원시-4179'],
+  // 시 전역 결과 한 페이지만 조회하면 인기순/검색 랭킹 때문에 일부 구의 신규 매물이 잘린다.
+  // 시 코드와 확인된 구 코드를 함께 조회해 수원시 전체의 후보 풀을 넓힌다.
+  수원시: ['수원시-4179', '수원시-영통구-1293', '수원시-권선구-1270'],
   // 구 단위 선택: 해당 구 전역 코드로 조회한다(대표 동 하나에 고정하지 않는다).
   수원시영통구: ['수원시-영통구-1293'],
   영통구: ['수원시-영통구-1293'],
@@ -515,6 +516,15 @@ function searchKeywordForWatch(watch) {
   return watch.keyword;
 }
 
+// 당근 판매자가 무료 매물을 '나눔' 또는 '무료'로 등록/표현할 수 있다. 모든 물건 무료
+// 감시에서는 두 검색 결과를 합쳐 한 검색어의 랭킹 상한 때문에 신규 매물을 놓치지 않는다.
+function searchKeywordsForWatch(watch) {
+  if ((watch.allItems || isAllItemsKeyword(watch)) && Number(watch.maxPrice) === 0) {
+    return ['나눔', '무료'];
+  }
+  return [searchKeywordForWatch(watch)];
+}
+
 function itemMatchesLocation(item, location) {
   if (isNationwide(location)) return true;
 
@@ -579,7 +589,7 @@ function matchesWatch(item, watch) {
  */
 async function searchDaangn(watch) {
   const regions = resolveDaangnRegions(watch);
-  const keyword = searchKeywordForWatch(watch);
+  const keywords = searchKeywordsForWatch(watch);
   const debug = process.env.DEBUG === 'true';
 
   // 시/구 전역 조회는 코드 하나면 충분하지만, 여러 코드가 지정되면 각각 조회해 병합한다.
@@ -589,23 +599,25 @@ async function searchDaangn(watch) {
   let totalParsed = 0;
   let htmlSample = '';
 
-  for (const region of fetchTargets) {
-    const html = await fetchSearchHtml(keyword, region);
-    const items = parseItems(html);
-    totalParsed += items.length;
-    if (!htmlSample) htmlSample = html;
-    // id 기준으로 여러 지역 조회 결과를 합친다(같은 매물이 인접 지역에서 중복 노출될 수 있음).
-    for (const it of items) if (it && it.id != null) byId.set(String(it.id), it);
+  for (const keyword of keywords) {
+    for (const region of fetchTargets) {
+      const html = await fetchSearchHtml(keyword, region);
+      const items = parseItems(html);
+      totalParsed += items.length;
+      if (!htmlSample) htmlSample = html;
+      // 검색어/지역별 결과는 id로 합친다(같은 매물이 여러 결과에 중복 노출될 수 있음).
+      for (const it of items) if (it && it.id != null) byId.set(String(it.id), it);
 
-    if (debug) {
-      const rawLinks = (html.match(/\/kr\/buy-sell\//g) || []).length;
-      const hasNextData = html.includes('__NEXT_DATA__') || html.includes('__next_f');
-      console.log(
-        `    [DEBUG] HTML ${html.length}자, 파싱 ${items.length}건` +
-          (region ? ` (in=${region} 지역검색)` : ' (지역코드 없음: 당근 기본지역 응답)') +
-          (process.env.DAANGN_COOKIE ? ' (로그인 쿠키)' : '') +
-          `, buy-sell 링크 ${rawLinks}회, RSC/NEXT ${hasNextData ? '있음' : '없음'}`
-      );
+      if (debug) {
+        const rawLinks = (html.match(/\/kr\/buy-sell\//g) || []).length;
+        const hasNextData = html.includes('__NEXT_DATA__') || html.includes('__next_f');
+        console.log(
+          `    [DEBUG] 검색어=${keyword}, HTML ${html.length}자, 파싱 ${items.length}건` +
+            (region ? ` (in=${region} 지역검색)` : ' (지역코드 없음: 당근 기본지역 응답)') +
+            (process.env.DAANGN_COOKIE ? ' (로그인 쿠키)' : '') +
+            `, buy-sell 링크 ${rawLinks}회, RSC/NEXT ${hasNextData ? '있음' : '없음'}`
+        );
+      }
     }
   }
 
@@ -616,7 +628,7 @@ async function searchDaangn(watch) {
 
   if (debug) {
     console.log(
-      `    [DEBUG] 조회 지역 ${fetchTargets.map((r) => r || '(기본)').join(', ')} → 병합 ${items.length}건(누적 파싱 ${totalParsed}), 매칭 ${matched.length}건` +
+      `    [DEBUG] 검색어 ${keywords.join(', ')} / 조회 지역 ${fetchTargets.map((r) => r || '(기본)').join(', ')} → 병합 ${items.length}건(누적 파싱 ${totalParsed}), 매칭 ${matched.length}건` +
         (isNationwide(watch.location) ? ' (전국 검색)' : '')
     );
     if (items.length === 0) {
