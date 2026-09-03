@@ -47,10 +47,10 @@
       "enabled": true
     },
     {
-      "id": "투명아크릴판-화성시",
-      "keyword": "투명아크릴판",
+      "id": "s24-화성시",
+      "keyword": "S24+",
       "location": "화성시",
-      "maxPrice": 40000,
+      "maxPrice": 350000,
       "email": "leemgs@gmail.com",
       "enabled": true
     },
@@ -70,6 +70,17 @@
       "keyword": "S24+",
       "location": "수원시영통구",
       "enabled": false
+    },
+    {
+      "id": "투명아크릴판-화성시",
+      "keyword": "투명아크릴판",
+      "location": "화성시",
+      "sites": [
+        "daangn"
+      ],
+      "maxPrice": 41000,
+      "email": "leemgs@gmail.com",
+      "enabled": true
     }
   ]
 }
