@@ -45,7 +45,9 @@ const DEFAULT_SEARCH_URL = 'https://www.daangn.com/kr/buy-sell/?search={kw}';
 const DEFAULT_REGIONS_BY_LOCATION = Object.freeze({
   // 시 전역 결과 한 페이지만 조회하면 인기순/검색 랭킹 때문에 일부 구의 신규 매물이 잘린다.
   // 시 코드와 확인된 구 코드를 함께 조회해 수원시 전체의 후보 풀을 넓힌다.
-  수원시: ['수원시-4179', '수원시-영통구-1293', '수원시-권선구-1270'],
+  // 매탄동-4535 는 SSR 파싱이 검증된 동 코드로, 시/구 코드가 막히거나 파싱 불가한 응답을
+  //   줄 때도 최소한 수원 중심부 매물은 확보하는 안전판이다(여러 코드는 병합·중복제거).
+  수원시: ['수원시-4179', '수원시-영통구-1293', '수원시-권선구-1270', '매탄동-4535'],
   // 구 단위 선택: 해당 구 전역 코드로 조회한다(대표 동 하나에 고정하지 않는다).
   수원시영통구: ['수원시-영통구-1293'],
   영통구: ['수원시-영통구-1293'],
@@ -598,10 +600,23 @@ async function searchDaangn(watch) {
   const byId = new Map();
   let totalParsed = 0;
   let htmlSample = '';
+  let okFetches = 0;
+  const fetchErrors = [];
 
   for (const keyword of keywords) {
     for (const region of fetchTargets) {
-      const html = await fetchSearchHtml(keyword, region);
+      // 지역 코드를 여러 개 조회하므로, 한 코드가 실패(403/404 등)해도 나머지 코드의
+      // 결과는 살린다. 예전엔 첫 코드가 실패하면 예외가 전파돼 그 감시의 당근 결과가
+      // 통째로 사라졌다(시 전역 코드 하나가 막히면 구 코드 결과까지 유실).
+      let html;
+      try {
+        html = await fetchSearchHtml(keyword, region);
+      } catch (err) {
+        fetchErrors.push(`${region || '기본지역'}: ${err.message}`);
+        if (debug) console.log(`    [DEBUG] 검색어=${keyword}, in=${region || '(기본)'} 조회 실패: ${err.message}`);
+        continue;
+      }
+      okFetches += 1;
       const items = parseItems(html);
       totalParsed += items.length;
       if (!htmlSample) htmlSample = html;
@@ -619,6 +634,12 @@ async function searchDaangn(watch) {
         );
       }
     }
+  }
+
+  // 조회를 한 번도 성공하지 못했을 때만 오류로 처리한다(실제로 사이트가 막힌 경우).
+  // 일부만 실패했다면 성공한 코드의 결과로 계속 진행한다.
+  if (okFetches === 0) {
+    throw new Error(`당근마켓 검색 요청 실패: ${fetchErrors.join(' / ') || '조회 대상 없음'}`);
   }
 
   const items = Array.from(byId.values());

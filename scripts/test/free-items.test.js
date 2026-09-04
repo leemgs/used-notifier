@@ -202,6 +202,7 @@ test('시 단위 선택은 시 전역 코드로 조회하고 시내 모든 구�
     '수원시-4179',
     '수원시-영통구-1293',
     '수원시-권선구-1270',
+    '매탄동-4535',
   ]);
   // 코드 미확보 구(장안/팔달)는 시 전역 코드로 폴백한 뒤 location 필터로 좁힌다.
   assert.deepEqual(resolveDaangnRegions({ location: '수원시장안구' }), ['수원시-4179']);
@@ -214,9 +215,48 @@ test('시 단위 선택은 시 전역 코드로 조회하고 시내 모든 구�
   };
   try {
     await searchDaangn({ keyword: '모두', location: '수원시', maxPrice: 0 });
-    assert.equal(requestedUrls.length, 6);
+    assert.equal(requestedUrls.length, 8); // 코드 4개 × 검색어 2개
     assert.ok(requestedUrls.some((url) => url.includes('search=%EB%82%98%EB%88%94')));
     assert.ok(requestedUrls.some((url) => url.includes('search=%EB%AC%B4%EB%A3%8C')));
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('일부 지역 코드가 403이어도 나머지 코드 결과로 계속 검색한다', async () => {
+  const originalFetch = global.fetch;
+  // 시/구 코드는 403(막힘), 매탄동 코드만 정상 매물을 준다고 가정.
+  global.fetch = async (url) => {
+    if (url.includes('%EB%A7%A4%ED%83%84%EB%8F%99-4535')) {
+      return {
+        ok: true,
+        text: async () => `
+          <a href="/kr/buy-sell/의자-무료나눔-abc123def456/">
+            <span class="title">의자 무료나눔</span>
+            <span class="price">나눔</span>
+            <span class="region">매탄동</span>
+          </a>`,
+      };
+    }
+    return { ok: false, status: 403, text: async () => '' };
+  };
+  try {
+    const found = await searchDaangn({ keyword: '모두', allItems: true, location: '수원시', maxPrice: 0 });
+    assert.equal(found.length, 1);
+    assert.equal(found[0].region, '매탄동');
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('모든 지역 코드가 실패하면 검색 오류로 처리한다', async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({ ok: false, status: 403, text: async () => '' });
+  try {
+    await assert.rejects(
+      searchDaangn({ keyword: '모두', allItems: true, location: '수원시', maxPrice: 0 }),
+      /당근마켓 검색 요청 실패/
+    );
   } finally {
     global.fetch = originalFetch;
   }
