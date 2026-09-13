@@ -42,14 +42,6 @@
       "enabled": true
     },
     {
-      "id": "s24-화성시",
-      "keyword": "S24+",
-      "location": "화성시",
-      "maxPrice": 400000,
-      "email": "leemgs@gmail.com",
-      "enabled": true
-    },
-    {
       "id": "lpg캠핑-수원시영통구",
       "keyword": "LPG캠핑",
       "location": "수원시영통구",
@@ -86,6 +78,17 @@
       ],
       "maxPrice": 0,
       "maxAgeDays": 1,
+      "email": "leemgs@gmail.com",
+      "enabled": true
+    },
+    {
+      "id": "s24-수원시",
+      "keyword": "S24+",
+      "location": "수원시",
+      "sites": [
+        "daangn"
+      ],
+      "maxPrice": 350000,
       "email": "leemgs@gmail.com",
       "enabled": true
     }
