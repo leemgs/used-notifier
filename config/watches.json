@@ -91,6 +91,17 @@
       "maxPrice": 350000,
       "email": "leemgs@gmail.com",
       "enabled": true
+    },
+    {
+      "id": "건조대-수원시",
+      "keyword": "건조대",
+      "location": "수원시",
+      "sites": [
+        "daangn"
+      ],
+      "maxPrice": 0,
+      "email": "leemgs@gmail.com",
+      "enabled": true
     }
   ]
 }
