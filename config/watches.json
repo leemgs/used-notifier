@@ -124,6 +124,17 @@
       "maxPrice": 30000,
       "email": "leemgs@gmail.com",
       "enabled": true
+    },
+    {
+      "id": "메탈선반-수원시",
+      "keyword": "메탈선반",
+      "location": "수원시",
+      "sites": [
+        "daangn"
+      ],
+      "maxPrice": 10000,
+      "email": "leemgs@gmail.com",
+      "enabled": true
     }
   ]
 }
