@@ -102,6 +102,17 @@
       "maxPrice": 0,
       "email": "leemgs@gmail.com",
       "enabled": true
+    },
+    {
+      "id": "장독-김천시",
+      "keyword": "장독",
+      "location": "김천시",
+      "sites": [
+        "daangn"
+      ],
+      "maxPrice": 20000,
+      "email": "leemgs@gmail.com",
+      "enabled": true
     }
   ]
 }
