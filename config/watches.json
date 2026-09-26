@@ -113,6 +113,17 @@
       "maxPrice": 20000,
       "email": "leemgs@gmail.com",
       "enabled": true
+    },
+    {
+      "id": "낚시대-수원시",
+      "keyword": "낚시대",
+      "location": "수원시",
+      "sites": [
+        "daangn"
+      ],
+      "maxPrice": 30000,
+      "email": "leemgs@gmail.com",
+      "enabled": true
     }
   ]
 }
