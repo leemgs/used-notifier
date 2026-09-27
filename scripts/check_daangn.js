@@ -65,6 +65,22 @@ function resolveRecipients(watchEmail, defaultEmail) {
   return primary.length ? primary : splitEmails(defaultEmail);
 }
 
+// 동시 실행 개수를 제한하며 비동기 작업을 처리한다(입력 순서대로 결과 반환).
+// 검색은 네트워크 대기가 대부분이라 병렬로 돌리면 전체 실행 시간이 크게 준다.
+async function mapLimit(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  const size = Math.max(1, Math.min(limit, items.length));
+  const workers = Array.from({ length: size }, async () => {
+    while (next < items.length) {
+      const cur = next++;
+      results[cur] = await fn(items[cur], cur);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 async function main() {
   const dryRun = process.env.DRY_RUN === 'true';
   const config = readJson(CONFIG_PATH, null);
@@ -85,6 +101,8 @@ async function main() {
   // 이메일 발송 실패를 GitHub 이슈로 기록했는지 여부(실행당 1회만 시도해 중복 방지).
   let emailFailureReported = false;
 
+  // 처리할 (감시항목 × 사이트) 작업 목록을 원래 순서대로 만든다.
+  const tasks = [];
   for (let i = 0; i < config.watches.length; i++) {
     const watch = config.watches[i];
     if (watch.enabled === false) continue;
@@ -110,31 +128,46 @@ async function main() {
         ? ` 희망가='무료(당근 나눔, 중고나라·번개장터 0원)'`
         : ` 희망가='≤${Number(watch.maxPrice).toLocaleString('ko-KR')}원'`
       : '';
-    const sites = watchSites(watch);
 
-    // 감시 항목마다 지정된 사이트(당근/중고나라 등)를 각각 검색한다.
-    for (const siteKey of sites) {
+    for (const siteKey of watchSites(watch)) {
       const source = SOURCES[siteKey];
       if (!source) continue;
-      // 상태는 (감시항목 × 사이트) 별로 분리. 당근은 과거 flat 키(state[id])를 폴백으로 읽는다.
-      const stateKey = `${id}::${siteKey}`;
-      const legacy = siteKey === 'daangn' ? state[id] : undefined;
+      tasks.push({ watch, id, to, chatMessage, priceNote, siteKey, source });
+    }
+  }
 
-      console.log(
-        `\n▶ [${source.name}] 키워드='${watch.keyword}' 지역='${watch.location || '(전체)'}'${priceNote} → ${to.join(', ')}`
-      );
+  // 검색(네트워크 대기)은 동시 실행 개수를 제한해 병렬로 수행한다(전체 실행 시간 단축).
+  // 알림 발송·상태 갱신 같은 부작용은 아래에서 원래 순서대로 순차 처리한다.
+  const concurrency = Number(process.env.SEARCH_CONCURRENCY) > 0 ? Number(process.env.SEARCH_CONCURRENCY) : 4;
+  await mapLimit(tasks, concurrency, async (t) => {
+    try {
+      t.found = await t.source.search(t.watch);
+    } catch (err) {
+      t.error = err;
+    }
+  });
 
-      let found;
-      try {
-        found = await source.search(watch);
-      } catch (err) {
-        console.error(`  ✖ 검색 실패: ${err.message}`);
-        errors.push(`${id}/${siteKey}: ${err.message}`);
-        continue;
-      }
+  // 알림/상태 처리(순차): 검색 결과를 원래 순서대로 확인해 신규 매물을 알린다.
+  for (const t of tasks) {
+    const { watch, id, to, chatMessage, priceNote, siteKey, source } = t;
+    // 상태는 (감시항목 × 사이트) 별로 분리. 당근은 과거 flat 키(state[id])를 폴백으로 읽는다.
+    const stateKey = `${id}::${siteKey}`;
+    const legacy = siteKey === 'daangn' ? state[id] : undefined;
 
-      console.log(`  조건 일치 매물: ${found.length}건`);
+    console.log(
+      `\n▶ [${source.name}] 키워드='${watch.keyword}' 지역='${watch.location || '(전체)'}'${priceNote} → ${to.join(', ')}`
+    );
 
+    if (t.error) {
+      console.error(`  ✖ 검색 실패: ${t.error.message}`);
+      errors.push(`${id}/${siteKey}: ${t.error.message}`);
+      continue;
+    }
+    const found = t.found;
+
+    console.log(`  조건 일치 매물: ${found.length}건`);
+
+    {
       const seen = new Set(state[stateKey] || legacy || []);
       const newItems = found.filter((it) => !seen.has(it.id));
 
