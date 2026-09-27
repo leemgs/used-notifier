@@ -126,9 +126,24 @@ function resolveDaangnRegion(watch) {
   return resolveDaangnRegions(watch)[0] || '';
 }
 
-async function fetchSearchHtml(keyword, region) {
-  const url = buildSearchUrl(keyword, region);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function envInt(name, fallback) {
+  const v = Number(process.env[name]);
+  return Number.isFinite(v) && v >= 0 ? v : fallback;
+}
+
+// 당근이 매물 결과를 서버사이드(SSR)로 실어준 "정상 응답"인지 대략 판별한다.
+// 결과가 있으면 JSON-LD ItemList 나 다수의 매물 링크가 실린다. 반대로 짧은 버스트
+// 요청 뒤에는 200 OK 이지만 앱 셸만 담긴 축약 페이지(JSON-LD 없음 · 링크 2개 수준)를
+// 돌려주는데, 이때 파서는 조용히 0건이 된다. 이 신호로 재시도/진단이 가능하다.
+function looksLikeSsrResults(html) {
+  const s = String(html || '');
+  if (/application\/ld\+json/.test(s) && s.includes('ItemList')) return true;
+  return (s.match(/\/kr\/buy-sell\//g) || []).length > 4;
+}
+
+async function fetchOnce(url) {
   // /s/ 검색의 in=으로 동네를 지정하고, 로그인 전용 결과가 필요한 경우에는
   // DAANGN_COOKIE 시크릿의 브라우저 세션도 함께 전달한다.
   const headers = {
@@ -140,11 +155,36 @@ async function fetchSearchHtml(keyword, region) {
   if (process.env.DAANGN_COOKIE) headers.Cookie = process.env.DAANGN_COOKIE;
 
   const res = await fetch(url, { headers });
-
   if (!res.ok) {
     throw new Error(`당근마켓 검색 요청 실패: HTTP ${res.status} (${url})`);
   }
   return res.text();
+}
+
+async function fetchSearchHtml(keyword, region) {
+  const url = buildSearchUrl(keyword, region);
+  const debug = process.env.DEBUG === 'true';
+  // 축약(비-SSR) 페이지를 받으면 몇 초 뒤 다시 시도한다. 짧은 스로틀 창이면 회복되고,
+  // 진짜로 결과가 없는 검색어면 몇 번 더 받아도 무해하게 축약 페이지가 온다.
+  const retries = envInt('DAANGN_RETRY', 2);
+  const backoffMs = envInt('DAANGN_RETRY_BACKOFF_MS', 1500);
+
+  // 축약 셸(스로틀) 페이지는 앱 마크업까지 담겨 크기가 크다(수만 자). 반대로 진짜로
+  // 결과가 0건인 응답이나 테스트 픽스처의 짧은 본문은 재시도해도 얻을 게 없으므로,
+  // "본문이 충분히 큰데도 SSR 결과 신호가 없는" 경우에만 재시도한다.
+  const looksThrottled = (h) => !looksLikeSsrResults(h) && String(h).length > 20000;
+
+  let html = await fetchOnce(url);
+  for (let attempt = 1; attempt <= retries && looksThrottled(html); attempt++) {
+    if (debug) {
+      console.log(
+        `    [DEBUG] 축약(비-SSR) 응답 감지 → ${attempt}/${retries} 재시도 (${backoffMs * attempt}ms 대기): ${url}`
+      );
+    }
+    await sleep(backoffMs * attempt);
+    html = await fetchOnce(url);
+  }
+  return html;
 }
 
 /**
@@ -154,6 +194,29 @@ function normalize(s) {
   return String(s || '')
     .replace(/\s+/g, '')
     .toLowerCase();
+}
+
+// 지역(동/읍/면/가/리) 토큰 하나로만 이루어진 문자열인지 판별한다.
+// 광역 텍스트 스캔이 이웃 매물의 동네 이름을 제목으로 잘못 주워오는 경우를 걸러낸다.
+// (예: '망포2동', '중산동', '서초동' → true / 'UAG 노트20 케이스' → false)
+function looksLikeNeighborhood(s) {
+  return /^[가-힣]{2,}\d{0,2}(?:동|읍|면|가|리)$/.test(String(s || '').trim());
+}
+
+// 매물 URL 슬러그에서 상품명을 복원한다. 당근 URL 은
+//   /kr/buy-sell/<한글-슬러그>-<id>/  형태라 슬러그 자체가 상품명이다.
+// 마크업(JSON/RSC)이 바뀌어 구조적 제목을 얻지 못해도 최소한의 제목을 확보한다.
+function titleFromUrl(url) {
+  const m = String(url || '').match(/\/kr\/buy-sell\/([^/?#]+)\/?(?:[?#]|$)/);
+  if (!m) return '';
+  let slug = m[1];
+  try {
+    slug = decodeURIComponent(slug);
+  } catch (_) {
+    /* 인코딩이 깨져도 원본 슬러그를 그대로 사용 */
+  }
+  slug = slug.replace(/-[0-9a-z]{6,}$/i, ''); // 끝의 매물 id 세그먼트 제거
+  return slug.replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -177,16 +240,30 @@ function parseItems(html) {
       : item.price != null && item.price !== ''
         ? item.price
         : '';
+    const url = item.url || existing.url || `${BASE_URL}/kr/buy-sell/${id}/`;
+
+    // 제목/지역은 가격과 마찬가지로 "먼저 확보된(구조적으로 더 신뢰할 수 있는)" 값을
+    // 우선 보존한다. JSON-LD(파트 1)가 정확한 상품명을 넣어도, 나중에 도는 광역 텍스트
+    // 스캔(extractFromText)이 이웃 매물의 "동네 이름"을 제목/지역으로 덮어써 키워드
+    // 매칭이 전부 실패하던(→ 알림 0건) 문제를 막는다. (당근 검색 페이지가 RSC/NEXT JSON
+    // 대신 다른 마크업으로 바뀌면서 URL 주변 최근접 필드가 동네명이 되어 발생했다.)
+    let title = existing.title || item.title || '';
+    // 제목이 없거나 "동네 이름 한 토큰"뿐이면(스캔 오염) URL 슬러그에서 상품명을 복원한다.
+    // 당근 URL 은 /kr/buy-sell/<한글-슬러그>-<id>/ 라서 슬러그가 곧 상품명이다.
+    if (!title || looksLikeNeighborhood(title)) {
+      title = titleFromUrl(url) || title;
+    }
+
     byId.set(id, {
       id,
-      title: item.title || existing.title || '',
+      title,
       rawPrice,
       price: formatPrice(rawPrice),
       priceValue: parsePriceValue(rawPrice), // 숫자 가격(원). 나눔=0, 불명=null
-      region: item.region || existing.region || '',
-      url: item.url || existing.url || `${BASE_URL}/kr/buy-sell/${id}/`,
-      image: item.image || existing.image || '',
-      publishedAt: item.publishedAt || existing.publishedAt || '',
+      region: existing.region || item.region || '',
+      url,
+      image: existing.image || item.image || '',
+      publishedAt: existing.publishedAt || item.publishedAt || '',
     });
   };
 
@@ -601,6 +678,7 @@ async function searchDaangn(watch) {
   let totalParsed = 0;
   let htmlSample = '';
   let okFetches = 0;
+  let reducedPages = 0;
   const fetchErrors = [];
 
   for (const keyword of keywords) {
@@ -617,6 +695,7 @@ async function searchDaangn(watch) {
         continue;
       }
       okFetches += 1;
+      if (!looksLikeSsrResults(html)) reducedPages += 1;
       const items = parseItems(html);
       totalParsed += items.length;
       if (!htmlSample) htmlSample = html;
@@ -646,6 +725,15 @@ async function searchDaangn(watch) {
   // 쿠키나 in= 응답을 신뢰해 지역 검사를 생략하지 않는다. 당근이 잘못된/기본 지역으로
   // 폴백할 수 있으므로 모든 카드를 watch.location 및 daangnRegion과 다시 대조한다.
   const matched = items.filter((it) => matchesWatch(it, watch));
+
+  // 모든 조회가 축약(비-SSR) 페이지였고 매물도 0건이면, 결과 없음이 아니라 당근의
+  // 스로틀(봇 차단)일 가능성이 높다. 프로덕션 로그(DEBUG 아님)에서도 구분되도록 경고한다.
+  if (reducedPages === okFetches && items.length === 0) {
+    console.warn(
+      `  ⚠ 당근 축약 응답만 수신(${reducedPages}/${okFetches}) — 스로틀(봇 차단) 의심. ` +
+        `DAANGN_COOKIE 설정/재발급 또는 재시도(DAANGN_RETRY/DAANGN_RETRY_BACKOFF_MS) 조정을 검토하세요.`
+    );
+  }
 
   if (debug) {
     console.log(
