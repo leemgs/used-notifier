@@ -40,7 +40,7 @@
       "maxPrice": 20000,
       "maxAgeDays": 1,
       "email": "leemgs@gmail.com",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "lpg캠핑-수원시영통구",
@@ -69,7 +69,7 @@
       "maxPrice": 41000,
       "maxAgeDays": 1,
       "email": "leemgs@gmail.com",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "화강암-수원시",
@@ -81,7 +81,7 @@
       "maxPrice": 0,
       "maxAgeDays": 1,
       "email": "leemgs@gmail.com",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "s24-수원시",
@@ -93,7 +93,7 @@
       "maxPrice": 350000,
       "maxAgeDays": 1,
       "email": "leemgs@gmail.com",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "건조대-수원시",
@@ -105,7 +105,7 @@
       "maxPrice": 0,
       "maxAgeDays": 1,
       "email": "leemgs@gmail.com",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "장독-김천시",
@@ -129,7 +129,7 @@
       "maxPrice": 30000,
       "maxAgeDays": 1,
       "email": "leemgs@gmail.com",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "메탈선반-수원시",
