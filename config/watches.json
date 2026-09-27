@@ -38,6 +38,7 @@
       "keyword": "노트20 UAG",
       "location": "수원시",
       "maxPrice": 20000,
+      "maxAgeDays": 1,
       "email": "leemgs@gmail.com",
       "enabled": true
     },
@@ -66,6 +67,7 @@
         "daangn"
       ],
       "maxPrice": 41000,
+      "maxAgeDays": 1,
       "email": "leemgs@gmail.com",
       "enabled": true
     },
@@ -89,6 +91,7 @@
         "daangn"
       ],
       "maxPrice": 350000,
+      "maxAgeDays": 1,
       "email": "leemgs@gmail.com",
       "enabled": true
     },
@@ -100,7 +103,7 @@
         "daangn"
       ],
       "maxPrice": 0,
-      "maxAgeDays": 2,
+      "maxAgeDays": 1,
       "email": "leemgs@gmail.com",
       "enabled": true
     },
@@ -112,6 +115,7 @@
         "daangn"
       ],
       "maxPrice": 20000,
+      "maxAgeDays": 1,
       "email": "leemgs@gmail.com",
       "enabled": true
     },
@@ -122,7 +126,7 @@
       "sites": [
         "daangn"
       ],
-      "maxPrice": 30000,
+      "maxAgeDays": 1,
       "email": "leemgs@gmail.com",
       "enabled": true
     },
@@ -134,6 +138,7 @@
         "daangn"
       ],
       "maxPrice": 10000,
+      "maxAgeDays": 1,
       "email": "leemgs@gmail.com",
       "enabled": true
     }
