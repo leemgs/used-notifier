@@ -184,12 +184,24 @@ function esc(s) {
   }[c]));
 }
 
+// 등록일 범위(얼마 전까지)를 목록에 표시할 짧은 문구로 변환. 없으면 빈 문자열.
+function formatMaxAge(w) {
+  if (w.maxAgeHours !== undefined && w.maxAgeHours !== '' && w.maxAgeHours !== null) {
+    return `최근 ${w.maxAgeHours}시간`;
+  }
+  if (w.maxAgeDays !== undefined && w.maxAgeDays !== '' && w.maxAgeDays !== null) {
+    return `최근 ${w.maxAgeDays}일`;
+  }
+  return '';
+}
+
 function searchableText(w) {
   return [
     w.keyword,
     w.location,
     formatMaxPrice(w.maxPrice),
     formatEmails(w.email),
+    formatMaxAge(w),
     w.chatMessage,
     ...watchSitesOf(w).map((key) => SITE_META[key]),
   ].join(' ').toLocaleLowerCase('ko-KR');
@@ -258,7 +270,7 @@ function render() {
       <td>${esc(w.location)}</td>
       <td class="muted-cell">${w.maxPrice !== undefined ? esc(formatMaxPrice(w.maxPrice)) : '-'}</td>
       <td class="email-cell">${emailCell}</td>
-      <td class="muted-cell">${esc(w.chatMessage || '(기본값)')}</td>
+      <td class="muted-cell">${esc(formatMaxAge(w) || '-')}</td>
       <td class="actions">
         <button type="button" class="mini" data-edit="${i}">수정</button>
         <button type="button" class="mini danger" data-del="${i}">삭제</button>
