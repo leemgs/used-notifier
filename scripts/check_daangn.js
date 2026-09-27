@@ -23,8 +23,61 @@ const ROOT = path.resolve(__dirname, '..');
 const CONFIG_PATH = path.join(ROOT, 'config', 'watches.json');
 const STATE_PATH = path.join(ROOT, 'state', 'seen.json');
 
-// 감시 항목당 상태에 보관하는 최대 매물 ID 개수 (파일 비대화 방지)
-const MAX_SEEN_PER_WATCH = 500;
+// 감시 항목당 상태에 보관하는 최대 매물 ID 개수 (파일 비대화 방지, 안전 상한)
+const MAX_SEEN_PER_WATCH = 3000;
+// 마지막으로 본 지 이 일수를 넘긴 매물 기록은 삭제한다. 이 기간 안에 매물이 계속
+// 노출되면 last-seen 날짜가 갱신되어 만료되지 않으므로 재알림이 생기지 않는다.
+// (예전 500개 개수 제한은 매물이 많을 때 아직 판매 중인 매물을 밀어내 재알림을 유발했다.)
+const SEEN_RETENTION_DAYS = Number(process.env.SEEN_RETENTION_DAYS) > 0
+  ? Number(process.env.SEEN_RETENTION_DAYS)
+  : 30;
+
+// 한국 시간(Asia/Seoul, UTC+9·DST 없음) 기준 오늘 날짜 'YYYY-MM-DD'.
+function kstDay(ms = Date.now()) {
+  return new Date(ms + 9 * 3600000).toISOString().slice(0, 10);
+}
+
+// 두 'YYYY-MM-DD' 사이의 일수 차(b - a). 파싱 불가하면 Infinity(=매우 오래됨).
+function daysBetweenDays(a, b) {
+  const da = Date.parse(`${a}T00:00:00Z`);
+  const db = Date.parse(`${b}T00:00:00Z`);
+  if (!Number.isFinite(da) || !Number.isFinite(db)) return Infinity;
+  return Math.round((db - da) / 86400000);
+}
+
+// 상태 항목을 {id: 'YYYY-MM-DD'} 맵으로 정규화한다.
+//  - 구버전 배열([id,...]) → 각 id 를 오늘 날짜로 승격(마이그레이션 시 대량 재알림 방지)
+//  - 객체 → 문자열 날짜 값만 얕은 복사
+function normalizeSeen(entry, today) {
+  const map = {};
+  if (Array.isArray(entry)) {
+    for (const id of entry) if (id != null) map[String(id)] = today;
+  } else if (entry && typeof entry === 'object') {
+    for (const k of Object.keys(entry)) if (typeof entry[k] === 'string') map[k] = entry[k];
+  }
+  return map;
+}
+
+// 보존 기간이 지난 기록을 삭제하고, 안전 상한을 초과하면 오래된 기록부터 제거한다.
+// 실제로 무언가 삭제되면 true 를 반환한다.
+function pruneSeen(map, today, retentionDays = SEEN_RETENTION_DAYS, maxCount = MAX_SEEN_PER_WATCH) {
+  let changed = false;
+  for (const k of Object.keys(map)) {
+    if (daysBetweenDays(map[k], today) > retentionDays) {
+      delete map[k];
+      changed = true;
+    }
+  }
+  const keys = Object.keys(map);
+  if (maxCount && keys.length > maxCount) {
+    keys.sort((a, b) => (map[a] < map[b] ? -1 : map[a] > map[b] ? 1 : 0)); // 오래된 날짜 먼저
+    for (const k of keys.slice(0, keys.length - maxCount)) {
+      delete map[k];
+      changed = true;
+    }
+  }
+  return changed;
+}
 
 function readJson(file, fallback) {
   try {
@@ -167,80 +220,107 @@ async function main() {
 
     console.log(`  조건 일치 매물: ${found.length}건`);
 
-    {
-      const seen = new Set(state[stateKey] || legacy || []);
-      const newItems = found.filter((it) => !seen.has(it.id));
+    // 상태를 {id: 마지막으로 본 날짜(KST)} 맵으로 다룬다. 같은 매물은 한 번 알린 뒤
+    // 계속 노출되는 동안 날짜만 갱신되어 다시 알리지 않는다(=하루에 여러 번, 또는
+    // 여러 날에 걸쳐 중복 알림이 오지 않음). 판매되어 목록에서 사라지면 보존기간
+    // 이후 기록이 삭제되고, 한참 뒤 재등장하면 그때 다시 알린다.
+    const today = kstDay();
+    const prevRaw = state[stateKey] != null ? state[stateKey] : legacy;
+    const seenMap = normalizeSeen(prevRaw, today);
+    let changed = Array.isArray(prevRaw); // 구버전(배열) → 객체 마이그레이션도 변경으로 간주
 
-      if (newItems.length === 0) {
-        console.log('  신규 매물 없음.');
-        continue;
+    // 계속 노출 중인(이미 본) 매물은 last-seen 날짜를 오늘로 갱신해 만료를 막는다.
+    for (const it of found) {
+      if (it.id != null && it.id in seenMap && seenMap[it.id] !== today) {
+        seenMap[it.id] = today;
+        changed = true;
       }
+    }
 
-      console.log(`  ✨ 신규 매물 ${newItems.length}건 발견`);
-      totalNew += newItems.length;
+    const newItems = found.filter((it) => it.id != null && !(it.id in seenMap));
 
-      if (dryRun) {
-        newItems.forEach((it) =>
-          console.log(`    - ${it.title} | ${it.price} | ${it.region} | ${it.url}`)
-        );
-        // DRY_RUN 에서는 알림/상태갱신을 하지 않는다.
-        continue;
+    // 상태 맵을 정리(만료·상한)하고, 변경이 있으면 저장 대상으로 표시하는 헬퍼.
+    const persist = () => {
+      if (pruneSeen(seenMap, today)) changed = true;
+      if (changed) {
+        state[stateKey] = seenMap;
+        stateChanged = true;
       }
+    };
 
-      // 두 채널(이슈/이메일)을 각각 시도한다. 하나라도 성공하면 "알림함"으로 간주.
-      let notified = false;
+    if (newItems.length === 0) {
+      console.log('  신규 매물 없음.');
+      persist();
+      continue;
+    }
 
-      if (wantIssue) {
-        try {
-          const issue = await createIssue({ watch, items: newItems, chatMessage, source });
-          console.log(`  🐙 GitHub 이슈 등록 완료 → #${issue.number} ${issue.html_url}`);
-          notified = true;
-        } catch (err) {
-          console.error(`  ✖ 이슈 등록 실패: ${err.message}`);
-          errors.push(`${id}/${siteKey} 이슈: ${err.message}`);
-        }
+    console.log(`  ✨ 신규 매물 ${newItems.length}건 발견`);
+    totalNew += newItems.length;
+
+    if (dryRun) {
+      newItems.forEach((it) =>
+        console.log(`    - ${it.title} | ${it.price} | ${it.region} | ${it.url}`)
+      );
+      // DRY_RUN 에서는 알림/상태갱신을 하지 않는다.
+      continue;
+    }
+
+    // 두 채널(이슈/이메일)을 각각 시도한다. 하나라도 성공하면 "알림함"으로 간주.
+    let notified = false;
+
+    if (wantIssue) {
+      try {
+        const issue = await createIssue({ watch, items: newItems, chatMessage, source });
+        console.log(`  🐙 GitHub 이슈 등록 완료 → #${issue.number} ${issue.html_url}`);
+        notified = true;
+      } catch (err) {
+        console.error(`  ✖ 이슈 등록 실패: ${err.message}`);
+        errors.push(`${id}/${siteKey} 이슈: ${err.message}`);
       }
+    }
 
-      if (wantEmail) {
-        try {
-          await sendNewItemsEmail({ to, watch, items: newItems, chatMessage, source });
-          console.log(`  ✉ 이메일 발송 완료 → ${to.join(', ')}`);
-          notified = true;
-        } catch (err) {
-          console.error(`  ✖ 이메일 발송 실패: ${err.message}`);
-          errors.push(`${id}/${siteKey} 이메일: ${err.message}`);
-          // 이메일 실패 사실을 GitHub 이슈로 남긴다(실행당 1회, 열린 이슈 있으면 생략).
-          if (!emailFailureReported) {
-            emailFailureReported = true; // 재시도 루프에서 중복 호출 방지
-            try {
-              const fi = await reportEmailFailure({ to, watch, source, error: err });
-              if (fi.deduped) {
-                console.warn(`  ℹ 이메일 실패 이슈가 이미 열려 있습니다 → #${fi.number} ${fi.html_url}`);
-              } else {
-                console.warn(`  🐙 이메일 실패를 이슈로 등록했습니다 → #${fi.number} ${fi.html_url}`);
-              }
-            } catch (reportErr) {
-              console.error(`  ✖ 실패 이슈 등록도 실패: ${reportErr.message}`);
-              errors.push(`${id}/${siteKey} 실패이슈: ${reportErr.message}`);
+    if (wantEmail) {
+      try {
+        await sendNewItemsEmail({ to, watch, items: newItems, chatMessage, source });
+        console.log(`  ✉ 이메일 발송 완료 → ${to.join(', ')}`);
+        notified = true;
+      } catch (err) {
+        console.error(`  ✖ 이메일 발송 실패: ${err.message}`);
+        errors.push(`${id}/${siteKey} 이메일: ${err.message}`);
+        // 이메일 실패 사실을 GitHub 이슈로 남긴다(실행당 1회, 열린 이슈 있으면 생략).
+        if (!emailFailureReported) {
+          emailFailureReported = true; // 재시도 루프에서 중복 호출 방지
+          try {
+            const fi = await reportEmailFailure({ to, watch, source, error: err });
+            if (fi.deduped) {
+              console.warn(`  ℹ 이메일 실패 이슈가 이미 열려 있습니다 → #${fi.number} ${fi.html_url}`);
+            } else {
+              console.warn(`  🐙 이메일 실패를 이슈로 등록했습니다 → #${fi.number} ${fi.html_url}`);
             }
+          } catch (reportErr) {
+            console.error(`  ✖ 실패 이슈 등록도 실패: ${reportErr.message}`);
+            errors.push(`${id}/${siteKey} 실패이슈: ${reportErr.message}`);
           }
         }
       }
-
-      if (!notified) {
-        // 모든 알림 채널이 실패하면 상태를 갱신하지 않아 다음 실행 때 재시도한다.
-        console.warn('  ⚠ 알림 실패로 상태를 갱신하지 않습니다(다음 실행에 재시도).');
-        continue;
-      }
-
-      // 상태 갱신: 이번에 조건 일치한 모든 매물 ID 를 기록 (신규 + 기존)
-      const merged = [...found.map((it) => it.id), ...(state[stateKey] || legacy || [])];
-      state[stateKey] = Array.from(new Set(merged)).slice(0, MAX_SEEN_PER_WATCH);
-      stateChanged = true;
     }
+
+    if (!notified) {
+      // 모든 알림 채널이 실패하면 신규 매물은 기록하지 않아 다음 실행 때 재시도한다.
+      // (이미 본 매물의 날짜 갱신/만료 정리는 반영해도 안전하다.)
+      console.warn('  ⚠ 알림 실패로 상태를 갱신하지 않습니다(다음 실행에 재시도).');
+      persist();
+      continue;
+    }
+
+    // 알림 성공: 신규 매물을 오늘 날짜로 기록한다.
+    for (const it of newItems) if (it.id != null) seenMap[it.id] = today;
+    changed = true;
+    persist();
   }
 
-  if (stateChanged) {
+  // DRY_RUN 에서는 상태 파일을 절대 변경하지 않는다(부작용 없음).
+  if (stateChanged && !dryRun) {
     writeJson(STATE_PATH, state);
     console.log(`\n상태 저장됨: ${path.relative(ROOT, STATE_PATH)}`);
   }
@@ -254,7 +334,12 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('예기치 못한 오류:', err);
-  process.exit(1);
-});
+// 직접 실행할 때만 점검을 수행한다(테스트에서 헬퍼만 require 할 수 있도록).
+if (require.main === module) {
+  main().catch((err) => {
+    console.error('예기치 못한 오류:', err);
+    process.exit(1);
+  });
+}
+
+module.exports = { kstDay, daysBetweenDays, normalizeSeen, pruneSeen };
