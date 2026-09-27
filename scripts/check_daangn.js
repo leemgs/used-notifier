@@ -220,24 +220,18 @@ async function main() {
 
     console.log(`  조건 일치 매물: ${found.length}건`);
 
-    // 상태를 {id: 마지막으로 본 날짜(KST)} 맵으로 다룬다. 같은 매물은 한 번 알린 뒤
-    // 계속 노출되는 동안 날짜만 갱신되어 다시 알리지 않는다(=하루에 여러 번, 또는
-    // 여러 날에 걸쳐 중복 알림이 오지 않음). 판매되어 목록에서 사라지면 보존기간
-    // 이후 기록이 삭제되고, 한참 뒤 재등장하면 그때 다시 알린다.
+    // 상태를 {id: 마지막으로 알린 날짜(KST)} 맵으로 다룬다. "매일 1회 리마인더":
+    // 같은 매물이라도 하루(한국 시간 기준)에 한 번만 알린다. 계속 노출되는 매물은
+    // 매일 한 번씩 다시 알림받고(리마인더), 같은 날 여러 번 실행돼도 중복 알림은 없다.
+    // 판매되어 사라지면 보존기간 이후 기록이 삭제된다.
     const today = kstDay();
     const prevRaw = state[stateKey] != null ? state[stateKey] : legacy;
     const seenMap = normalizeSeen(prevRaw, today);
     let changed = Array.isArray(prevRaw); // 구버전(배열) → 객체 마이그레이션도 변경으로 간주
 
-    // 계속 노출 중인(이미 본) 매물은 last-seen 날짜를 오늘로 갱신해 만료를 막는다.
-    for (const it of found) {
-      if (it.id != null && it.id in seenMap && seenMap[it.id] !== today) {
-        seenMap[it.id] = today;
-        changed = true;
-      }
-    }
-
-    const newItems = found.filter((it) => it.id != null && !(it.id in seenMap));
+    // 오늘 아직 알리지 않은 매물(기록 날짜가 오늘이 아님)만 알린다.
+    // 구버전 배열에서 마이그레이션된 항목은 오늘 날짜로 승격되어 첫날 중복 알림을 막는다.
+    const newItems = found.filter((it) => it.id != null && seenMap[it.id] !== today);
 
     // 상태 맵을 정리(만료·상한)하고, 변경이 있으면 저장 대상으로 표시하는 헬퍼.
     const persist = () => {
