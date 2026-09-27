@@ -48,50 +48,48 @@ test('pruneSeen 은 보존기간 지난 기록을 지우고 상한을 넘으면 
   assert.equal(pruneSeen({ a: today }, today, 30, 100), false);
 });
 
-// 메인 루프의 중복 판정 로직을 헬퍼로 재현해 "하루 1회" 동작을 검증한다.
+// 메인 루프의 중복 판정 로직을 헬퍼로 재현해 "매일 1회 리마인더" 동작을 검증한다.
+// 규칙: 기록 날짜가 오늘이 아닌 매물만 알리고, 알린 매물은 오늘 날짜로 기록한다.
 function simulateRun(prevRaw, foundIds, today) {
   const seenMap = normalizeSeen(prevRaw != null ? prevRaw : undefined, today);
-  for (const id of foundIds) {
-    if (id in seenMap) seenMap[id] = today; // 계속 노출 중 → 날짜 갱신(재알림 안 함)
-  }
-  const newIds = foundIds.filter((id) => !(id in seenMap));
-  for (const id of newIds) seenMap[id] = today; // 알림 성공 가정 → 기록
+  const newIds = foundIds.filter((id) => seenMap[id] !== today);
+  for (const id of newIds) seenMap[id] = today; // 알림 성공 가정 → 오늘 날짜로 기록
   pruneSeen(seenMap, today, 30);
   return { newIds, seenMap };
 }
 
-test('같은 매물은 하루에도, 다음 날에도 다시 알리지 않는다(계속 노출 시)', () => {
-  // 1일차: 3건 모두 신규
+test('같은 날 여러 번 실행해도 1회만, 다음 날에는 다시 알린다(매일 1회 리마인더)', () => {
+  // 1일차 첫 실행: 3건 모두 알림
   let r = simulateRun(undefined, ['x', 'y', 'z'], '2026-09-27');
   assert.deepEqual(r.newIds, ['x', 'y', 'z']);
 
-  // 같은 날 재실행(30분 뒤): 동일 매물 → 신규 0
+  // 같은 날 30분 뒤 재실행: 이미 오늘 알림 → 0건 (하루 중복 방지)
   r = simulateRun(r.seenMap, ['x', 'y', 'z'], '2026-09-27');
   assert.deepEqual(r.newIds, []);
 
-  // 다음 날: 여전히 노출 중 → 신규 0 (여러 날 중복 방지)
+  // 다음 날: 여전히 노출 중 → 3건 다시 알림 (매일 1회 리마인더)
+  r = simulateRun(r.seenMap, ['x', 'y', 'z'], '2026-09-28');
+  assert.deepEqual(r.newIds, ['x', 'y', 'z']);
+
+  // 다음 날 같은 날 재실행: 다시 0건
   r = simulateRun(r.seenMap, ['x', 'y', 'z'], '2026-09-28');
   assert.deepEqual(r.newIds, []);
-
-  // 새 매물 w 만 신규
-  r = simulateRun(r.seenMap, ['x', 'y', 'z', 'w'], '2026-09-28');
-  assert.deepEqual(r.newIds, ['w']);
 });
 
-test('구버전 배열 상태에서 넘어와도 기존 매물을 다시 알리지 않는다', () => {
+test('구버전 배열에서 마이그레이션되는 날에는 중복 알림하지 않는다', () => {
   const legacyArray = ['x', 'y'];
-  const r = simulateRun(legacyArray, ['x', 'y', 'z'], '2026-09-27');
-  assert.deepEqual(r.newIds, ['z']); // 배열의 x,y 는 이미 본 것으로 취급
+  // 마이그레이션 첫날: 배열 항목은 오늘 알린 것으로 승격 → z 만 신규
+  let r = simulateRun(legacyArray, ['x', 'y', 'z'], '2026-09-27');
+  assert.deepEqual(r.newIds, ['z']);
+  // 다음 날부터는 정상적으로 매일 1회 리마인더
+  r = simulateRun(r.seenMap, ['x', 'y', 'z'], '2026-09-28');
+  assert.deepEqual(r.newIds, ['x', 'y', 'z']);
 });
 
-test('오래 사라졌다 재등장한 매물은 보존기간 후 다시 알린다', () => {
-  // 최초 알림
+test('판매되어 사라진 매물은 보존기간 후 기록이 정리된다(파일 비대화 방지)', () => {
   let r = simulateRun(undefined, ['gone'], '2026-07-01');
   assert.deepEqual(r.newIds, ['gone']);
   // 목록에서 사라진 채 보존기간(30일)을 넘기면 기록이 만료(삭제)된다.
   r = simulateRun(r.seenMap, [], '2026-08-15'); // 45일 경과
   assert.deepEqual(Object.keys(r.seenMap), []);
-  // 재등장하면 그때 다시 신규로 알린다.
-  r = simulateRun(r.seenMap, ['gone'], '2026-08-16');
-  assert.deepEqual(r.newIds, ['gone']);
 });
