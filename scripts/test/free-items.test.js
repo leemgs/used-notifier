@@ -156,6 +156,18 @@ test('시간 단위 등록일 범위(maxAgeHours)는 지금부터 롤링 윈도�
   assert.equal(matchesWatch({ title: '의자', priceValue: 0 }, watch), true);
 });
 
+test('등록일 범위는 무료나눔이 아닌(유료) 감시에도 적용된다', () => {
+  const now = Date.now();
+  // maxPrice 를 두지 않은(=금액 제한 없음) 유료 매물 감시 + 시간 단위 등록일 범위
+  const watch = { keyword: '의자', location: '', maxAgeHours: 3 };
+  assert.equal(matchesWatch({ title: '의자 판매', priceValue: 50000, publishedAt: new Date(now - 1 * 3600000).toISOString() }, watch), true);
+  assert.equal(matchesWatch({ title: '의자 판매', priceValue: 50000, publishedAt: new Date(now - 5 * 3600000).toISOString() }, watch), false);
+  // 상한가(maxPrice 양수) 감시 + 일 단위도 동일하게 적용
+  const watch2 = { keyword: '의자', location: '', maxPrice: 100000, maxAgeDays: 1 };
+  assert.equal(matchesWatch({ title: '의자', priceValue: 90000, publishedAt: new Date(now - 3 * 3600000).toISOString() }, watch2), true);
+  assert.equal(matchesWatch({ title: '의자', priceValue: 90000, publishedAt: new Date(now - 3 * 86400000).toISOString() }, watch2), false);
+});
+
 test('maxAgeHours 는 maxAgeDays 보다 우선한다', () => {
   const now = Date.now();
   // 시간(1h)이 우선이라 6시간 전 매물은 제외되어야 한다(일=3이 있어도).

@@ -372,7 +372,6 @@ function openEdit(index) {
     $('f-max-age-value').value = w.maxAgeDays !== undefined ? w.maxAgeDays : '';
     $('f-max-age-unit').value = 'day';
   }
-  $('f-max-age-wrap').classList.toggle('hidden', !$('f-free-share').checked);
   $('f-email').value = formatEmails(w.email);
   $('f-msg').value = w.chatMessage || '';
   $('f-enabled').checked = w.enabled !== false;
@@ -394,7 +393,6 @@ $('f-free-share').addEventListener('change', (e) => {
   if (e.target.checked) $('f-maxprice').value = '0';
   else if ($('f-maxprice').value === '0') $('f-maxprice').value = '';
   $('f-maxprice').disabled = e.target.checked;
-  $('f-max-age-wrap').classList.toggle('hidden', !e.target.checked);
 });
 
 $('edit-form').addEventListener('submit', (e) => {
@@ -402,10 +400,10 @@ $('edit-form').addEventListener('submit', (e) => {
   const index = +$('edit-index').value;
   const keyword = $('f-keyword').value.trim();
   const location = regionPicker.getValue();
-  // 등록일 범위: 단위(일/시간)에 따라 maxAgeDays 또는 maxAgeHours 로 저장한다.
+  // 등록일 범위: 무료나눔 여부와 무관하게, 단위(일/시간)에 따라 maxAgeDays/maxAgeHours 로 저장.
   let maxAgeDays;
   let maxAgeHours;
-  if ($('f-free-share').checked && $('f-max-age-value').value !== '') {
+  if ($('f-max-age-value').value !== '') {
     const n = parseInt($('f-max-age-value').value, 10);
     if ($('f-max-age-unit').value === 'hour') maxAgeHours = n;
     else maxAgeDays = n;
