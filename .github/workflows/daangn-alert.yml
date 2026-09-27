@@ -1,14 +1,14 @@
 name: 당근마켓 신규 매물 알림
 
 # 실행 방식:
-#  - GitHub 스케줄러(cron)는 부하로 인해 실제로는 약 1~2시간 간격으로만 job 을 "시작"한다.
-#  - 그래서 job 이 한 번 시작되면 그 안에서 POLL_MINUTES(기본 3분)마다 반복 점검하여
-#    실질 점검 간격을 크게 줄인다. (self-hosted runner 없이 GitHub Actions 만 사용)
-#  - MAX_MINUTES(기본 330분) 도달 시 종료하고, 다음 스케줄 런이 이어받는다.
-#  - cancel-in-progress: true 로 새 런이 시작되면 이전 루프를 교체해 항상 최신 1개만 돈다.
+#  - GitHub 스케줄러(cron)로 1시간마다 1회 실행한다(단발성 점검).
+#    · 예전에는 한 job 안에서 몇 분 간격으로 최대 5.5시간을 도는 폴링 루프였는데,
+#      실행 시간이 지나치게 길어 이를 없애고 매 실행이 짧게 끝나도록 바꿨다.
+#  - 각 실행은 config/watches.json 을 한 번 점검하고 알림/상태 커밋 후 종료한다.
+#  - GitHub 스케줄러는 부하 시 지연·누락될 수 있으나, 매시 실행이라 다음 시각이 이어받는다.
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '0 * * * *'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -19,21 +19,13 @@ on:
         description: '파싱 진단 로그 출력(DEBUG)'
         type: boolean
         default: false
-      poll_minutes:
-        description: '한 실행 안에서 반복 점검 간격(분)'
-        type: string
-        default: '3'
-      max_minutes:
-        description: '한 실행의 최대 지속 시간(분, 6시간 미만 권장)'
-        type: string
-        default: '330'
 
 # state/seen.json 커밋(contents) 및 이슈 생성(issues) 권한 필요
 permissions:
   contents: write
   issues: write
 
-# 항상 최신 루프 1개만 돌도록: 새 런이 시작되면 이전(대기 중이던) 루프를 취소
+# 겹쳐 실행되지 않도록: 새 런이 시작되면 진행 중인 이전 런을 취소
 concurrency:
   group: daangn-alert
   cancel-in-progress: true
@@ -41,22 +33,24 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    # job 최대 6시간 제한보다 넉넉히 아래로. 스텝의 MAX_MINUTES 로 정상 종료를 유도.
-    timeout-minutes: 350
+    # 단발성 점검이라 짧게 끝난다. 네트워크 지연 등에 대비한 넉넉한 상한.
+    timeout-minutes: 15
     steps:
       - name: 저장소 체크아웃
         uses: actions/checkout@v4
 
-      - name: Node.js 설정
+      - name: Node.js 설정 (npm 캐시 사용)
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: scripts/package-lock.json
 
       - name: 의존성 설치
         working-directory: scripts
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
-      - name: 반복 점검 (검색 · 알림 · 상태 커밋)
+      - name: 점검 (검색 · 알림 · 상태 커밋)
         env:
           GMAIL_USER: ${{ vars.GMAIL_USER || secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
@@ -69,53 +63,26 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           DRY_RUN: ${{ github.event.inputs.dry_run }}
           DEBUG: ${{ github.event.inputs.debug }}
-          POLL_MINUTES: ${{ github.event.inputs.poll_minutes || '3' }}
-          MAX_MINUTES: ${{ github.event.inputs.max_minutes || '330' }}
+          # 검색(네트워크 대기)을 몇 개까지 동시에 수행할지. 너무 높이면 사이트가 429/403 을 줄 수 있다.
+          SEARCH_CONCURRENCY: '4'
         run: |
           set +e
-          POLL=${POLL_MINUTES:-3}
-          MAXM=${MAX_MINUTES:-330}
-          # 방어적 기본값 (숫자가 아니면 기본값 사용)
-          case "$POLL" in ''|*[!0-9]*) POLL=3 ;; esac
-          case "$MAXM" in ''|*[!0-9]*) MAXM=330 ;; esac
-          [ "$POLL" -lt 1 ] && POLL=1
-          DEADLINE=$(( $(date +%s) + MAXM * 60 ))
-
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          echo "▶ 반복 점검 시작: ${POLL}분 간격, 최대 ${MAXM}분"
-          n=0
-          RUN_FAILED=0
-          while :; do
-            n=$((n + 1))
-            echo ""
-            echo "═════ 점검 #$n · $(date -u '+%Y-%m-%d %H:%M:%SZ') ═════"
+          echo "▶ 점검 시작 · $(date -u '+%Y-%m-%d %H:%M:%SZ')"
+          ( cd scripts && node check_daangn.js )
+          CHECK_STATUS=$?
+          if [ "$CHECK_STATUS" -ne 0 ]; then
+            echo "::error::검색 또는 알림 발송에 실패했습니다. 위 오류 로그와 저장소 Secrets를 확인하세요."
+          fi
 
-            ( cd scripts && node check_daangn.js )
-            CHECK_STATUS=$?
-            if [ "$CHECK_STATUS" -ne 0 ]; then
-              RUN_FAILED=1
-              echo "::error::검색 또는 알림 발송에 실패했습니다. 위 오류 로그와 저장소 Secrets를 확인하세요."
-            fi
+          # DRY_RUN 이 아니고 상태가 바뀌었으면 seen.json 커밋/푸시
+          if [ "${DRY_RUN}" != "true" ] && [ -n "$(git status --porcelain state/)" ]; then
+            git add state/seen.json
+            git commit -m "chore: 감시 상태(seen.json) 업데이트 [skip ci]" >/dev/null 2>&1 || true
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" >/dev/null 2>&1 || true
+            git push origin "HEAD:${GITHUB_REF_NAME}" 2>/dev/null || echo "  (상태 push 실패 — 다음 실행에 재시도)"
+          fi
 
-            # DRY_RUN 이 아니고 상태가 바뀌었으면 seen.json 커밋/푸시 (매 주기 영속화)
-            if [ "${DRY_RUN}" != "true" ] && [ -n "$(git status --porcelain state/)" ]; then
-              git add state/seen.json
-              git commit -m "chore: 감시 상태(seen.json) 업데이트 [skip ci]" >/dev/null 2>&1 || true
-              git pull --rebase --autostash origin "${GITHUB_REF_NAME}" >/dev/null 2>&1 || true
-              git push origin "HEAD:${GITHUB_REF_NAME}" 2>/dev/null || echo "  (상태 push 실패 — 다음 주기에 재시도)"
-            fi
-
-            # 다음 주기가 최대 시간을 넘기면 정상 종료 (다음 스케줄 런이 이어받음)
-            if [ $(( $(date +%s) + POLL * 60 )) -ge $DEADLINE ]; then
-              echo ""
-              echo "⏱ 최대 실행 시간(${MAXM}분) 도달 — 종료합니다. 다음 스케줄 런이 이어서 점검합니다."
-              break
-            fi
-
-            echo "…다음 점검까지 ${POLL}분 대기"
-            sleep $(( POLL * 60 ))
-          done
-
-          exit "$RUN_FAILED"
+          exit "$CHECK_STATUS"
