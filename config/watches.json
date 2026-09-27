@@ -126,6 +126,7 @@
       "sites": [
         "daangn"
       ],
+      "maxPrice": 30000,
       "maxAgeDays": 1,
       "email": "leemgs@gmail.com",
       "enabled": true
