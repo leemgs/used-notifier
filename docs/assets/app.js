@@ -77,9 +77,10 @@ form.addEventListener('submit', (e) => {
   };
   if (!watch.allItems) delete watch.allItems;
   if (maxPrice !== undefined) watch.maxPrice = maxPrice;
+  // 등록일 범위는 무료나눔 여부와 무관하게 적용한다(유료 매물도 최근 등록분만 알림 가능).
   const maxAgeValue = document.getElementById('max-age-value').value;
   const maxAgeUnit = document.getElementById('max-age-unit').value;
-  if (document.getElementById('free-share').checked && maxAgeValue !== '') {
+  if (maxAgeValue !== '') {
     const n = parseInt(maxAgeValue, 10);
     if (maxAgeUnit === 'hour') watch.maxAgeHours = n;
     else watch.maxAgeDays = n;
@@ -114,13 +115,11 @@ if (maxPriceInput && freeShareInput) {
     if (freeShareInput.checked) maxPriceInput.value = '0';
     else if (maxPriceInput.value === '0') maxPriceInput.value = '';
     maxPriceInput.disabled = freeShareInput.checked;
-    document.getElementById('max-age-wrap').classList.toggle('hidden', !freeShareInput.checked);
   });
   maxPriceInput.addEventListener('input', () => {
     const d = maxPriceInput.value.replace(/[^\d]/g, '');
     maxPriceInput.value = d ? parseInt(d, 10).toLocaleString('ko-KR') : '';
     freeShareInput.checked = d === '0';
     maxPriceInput.disabled = freeShareInput.checked;
-    document.getElementById('max-age-wrap').classList.toggle('hidden', !freeShareInput.checked);
   });
 }
