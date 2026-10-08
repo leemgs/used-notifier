@@ -264,8 +264,17 @@ function parseItems(html) {
       url,
       image: existing.image || item.image || '',
       publishedAt: existing.publishedAt || item.publishedAt || '',
+      // 매물 상태: Ongoing(판매중) / Reserved(예약중) / Closed(거래완료). 먼저 확보된 값 우선.
+      status: existing.status || item.status || '',
     });
   };
+
+  // --- 0) RSC 매물 객체 구조적 파싱 (가장 신뢰도 높음, 먼저 실행해 우선권 확보) ---
+  // 당근 검색 결과는 RSC 스트림에 매물별 JSON 객체로 담긴다. 한 객체 안에 제목·가격·
+  //   상태(status)·등록일(createdAt)·지역(region)이 함께 있으므로, 객체 단위로 묶어
+  //   추출하면 예전 "URL 주변 ±500자 최근접" 추정이 이웃 매물의 값(특히 등록일)을 잘못
+  //   가져오던 문제를 없앤다. 상태(거래완료/예약중)도 이 단계에서만 확보된다.
+  extractArticleObjects(deEscape(html), add);
 
   // --- 1) JSON-LD ---
   for (const block of extractJsonLd(html)) {
@@ -287,6 +296,8 @@ function parseItems(html) {
           publishedAt: normalizePublishedAt(
             target.datePosted || target.datePublished || target.uploadDate || target.createdAt
           ),
+          // offers.availability(InStock/OutOfStock)로 상태 보강. 구조적 파싱이 놓친 경우만 채워진다.
+          status: availabilityToStatus(target.offers),
         });
       }
     }
@@ -330,6 +341,52 @@ function deEscape(s) {
     .replace(/\\u0026/g, '&')
     .replace(/\\\//g, '/')
     .replace(/\\"/g, '"');
+}
+
+// JSON-LD offers.availability(schema.org URL)를 매물 상태로 변환.
+//   InStock → Ongoing(판매중), OutOfStock/SoldOut/Discontinued → Closed(거래완료/예약 등)
+function availabilityToStatus(offers) {
+  const offer = Array.isArray(offers) ? offers[0] : offers;
+  const a = String((offer && offer.availability) || '').toLowerCase();
+  if (!a) return '';
+  if (a.includes('instock')) return 'Ongoing';
+  if (a.includes('outofstock') || a.includes('soldout') || a.includes('discontinued')) return 'Closed';
+  return '';
+}
+
+// RSC 스트림의 매물 객체를 "객체 단위"로 구조적으로 파싱한다.
+//   {... "href":"/kr/buy-sell/<슬러그>-<id>/","title":"...","price":"...","status":"Ongoing",
+//        ...,"createdAt":"...","region":{"name":"..."} ...}
+// href 기준으로 한 객체의 범위를 다음 href 직전까지로 잘라, 같은 객체 안의 필드만 뽑는다.
+// 이렇게 하면 제목·가격·상태·등록일·지역이 서로 뒤섞이지 않는다(이웃 매물 값 오염 방지).
+function extractArticleObjects(text, add) {
+  const hrefRe = /"href":"(\/kr\/buy-sell\/[^"]*?-[0-9a-zA-Z]{5,}\/?)"/g;
+  const hrefs = [];
+  let m;
+  while ((m = hrefRe.exec(text)) !== null) hrefs.push({ idx: m.index, href: m[1] });
+  const field = (rec, re) => {
+    const mm = rec.match(re);
+    return mm ? mm[1] : '';
+  };
+  for (let i = 0; i < hrefs.length; i++) {
+    const start = hrefs[i].idx;
+    // 다음 매물 href 직전까지(없으면 넉넉히 6000자)를 한 객체로 본다 → 객체 경계를 넘지 않음.
+    const end = i + 1 < hrefs.length ? Math.min(hrefs[i + 1].idx, start + 6000) : start + 6000;
+    const rec = text.slice(start, end);
+    const href = hrefs[i].href;
+    const id = extractIdFromUrl(href);
+    if (!id) continue;
+    add({
+      id,
+      title: field(rec, /"title":"([^"]{1,200})"/),
+      price: field(rec, /"price":\s*"?(\d{1,12})"?/),
+      region: field(rec, /"region":\s*\{\s*"name":"([^"]{1,40})"/),
+      status: field(rec, /"status":"([A-Za-z]+)"/),
+      url: absolutize(href),
+      image: field(rec, /"thumbnail":"([^"]{1,300})"/),
+      publishedAt: normalizePublishedAt(field(rec, /"createdAt":"([^"]{4,40})"/)),
+    });
+  }
 }
 
 // 당근 매물 JSON 은 보통 {title, price, region, url} 순서라, 한 매물의 필드는 자기 url "앞"에 온다.
@@ -607,16 +664,27 @@ function searchKeywordsForWatch(watch) {
 function itemMatchesLocation(item, location) {
   if (isNationwide(location)) return true;
 
-  const hay = normalize(`${item.region} ${item.title}`);
+  const raw = `${item.region || ''} ${item.title || ''}`;
+  const hay = normalize(raw);
   // 당근 등은 행정동(매탄3동)으로 표기하지만 지역 데이터는 법정동(매탄동)이라
   // 동/가/읍/면 앞 숫자를 제거한 버전도 함께 비교한다. (매탄3동 → 매탄동)
   const hayDong = hay.replace(/([가-힣])\d+(동|가|읍|면)/g, '$1$2');
   const variants = locationVariants(location);
   if (variants.some((v) => hay.includes(v) || hayDong.includes(v))) return true;
 
-  // 시/구 단위 입력 → 그 안의 동 이름이 매물 지역/제목에 있으면 매칭
+  // 시/구 단위 입력 → 그 안의 동 이름이 매물 지역/제목에 있으면 매칭.
+  // 단, 동네명이 더 긴 동네명의 '일부'로 들어간 오탐은 배제한다.
+  //   예: 수원 권선구의 '평동'이 인천 '부평동'에 부분 일치해 수원으로 오매칭되던 문제.
+  //   동네명 앞에 다른 한글이 붙지 않을 때만(온전한 동네 토큰) 인정한다. 공백을 지우면
+  //   토큰 경계가 사라지므로(예: '영통구 매탄동'→'영통구매탄동') 공백을 보존한 문자열로 본다.
+  const loose = raw.toLowerCase();
+  const looseDong = loose.replace(/([가-힣])\d+(동|가|읍|면)/g, '$1$2');
+  const hasDongToken = (d) => {
+    const re = new RegExp('(?:^|[^가-힣])' + d.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    return re.test(loose) || re.test(looseDong);
+  };
   for (const d of dongsForLocation(location)) {
-    if (d.length >= 2 && (hay.includes(d) || hayDong.includes(d))) return true;
+    if (d.length >= 2 && hasDongToken(d)) return true;
   }
   return false;
 }
@@ -633,7 +701,19 @@ function regionNameFromSlug(region) {
     .trim();
 }
 
+// 판매중(구매 가능) 매물인지 판단한다. 당근 상태(status): Ongoing(판매중)만 통과,
+// Reserved(예약중)·Closed(거래완료)는 제외. 상태를 파싱하지 못한 경우(빈 값)는
+// 정상 매물을 놓치지 않도록 통과시킨다(fail-open). 중고나라·번개장터 등 status 가
+// 없는 소스도 영향받지 않는다.
+function isAvailable(item) {
+  const s = normalize(item && item.status);
+  if (!s) return true;
+  return s === 'ongoing';
+}
+
 function matchesWatch(item, watch) {
+  // 거래완료/예약중 매물은 알리지 않는다(판매중만).
+  if (!isAvailable(item)) return false;
   // allItems는 검색어를 후보 조회에만 사용하고 제품명 필터는 적용하지 않는다.
   // 이전 설정과의 호환성을 위해 무료 모드의 범용 키워드도 같은 방식으로 처리한다.
   if (
@@ -883,4 +963,5 @@ module.exports = {
   searchDaangn,
   normalize,
   describeMaxAge,
+  isAvailable,
 };

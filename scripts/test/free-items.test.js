@@ -11,6 +11,7 @@ const {
   parseItems: parseDaangn,
   searchDaangn,
   describeMaxAge,
+  isAvailable,
 } = require('../daangn');
 const { parseItems: parseJoongna } = require('../joongna');
 const { parseItems: parseBunjang } = require('../bunjang');
@@ -174,6 +175,60 @@ test('maxAgeHours 는 maxAgeDays 보다 우선한다', () => {
   const watch = { keyword: '모두', location: '', maxPrice: 0, maxAgeDays: 3, maxAgeHours: 1 };
   assert.equal(matchesWatch({ title: '의자', priceValue: 0, publishedAt: new Date(now - 30 * 60000).toISOString() }, watch), true);
   assert.equal(matchesWatch({ title: '의자', priceValue: 0, publishedAt: new Date(now - 6 * 3600000).toISOString() }, watch), false);
+});
+
+test('거래완료/예약중 매물은 알리지 않고 판매중만 통과시킨다', () => {
+  const watch = { keyword: '선반', location: '', maxPrice: 100000 };
+  const base = { title: '메탈 선반', region: '매탄동', priceValue: 5000 };
+  assert.equal(matchesWatch({ ...base, status: 'Ongoing' }, watch), true);
+  assert.equal(matchesWatch({ ...base, status: 'Closed' }, watch), false); // 거래완료
+  assert.equal(matchesWatch({ ...base, status: 'Reserved' }, watch), false); // 예약중
+  // 상태를 파싱하지 못한(빈 값) 매물은 정상 매물을 놓치지 않도록 통과(fail-open)
+  assert.equal(matchesWatch({ ...base, status: '' }, watch), true);
+  assert.equal(matchesWatch({ ...base }, watch), true);
+});
+
+test('isAvailable: Ongoing 만 판매중으로 본다(상태 불명은 통과)', () => {
+  assert.equal(isAvailable({ status: 'Ongoing' }), true);
+  assert.equal(isAvailable({ status: 'Closed' }), false);
+  assert.equal(isAvailable({ status: 'Reserved' }), false);
+  assert.equal(isAvailable({ status: '' }), true);
+  assert.equal(isAvailable({}), true);
+});
+
+test('RSC 매물 객체에서 상태·등록일·지역을 같은 객체 단위로 파싱한다', () => {
+  // 거래완료 매물(1주 전 등록)과 판매중 매물(오늘)이 한 스트림에 섞인 경우.
+  // 예전 방식은 등록일을 이웃 매물에서 잘못 가져왔다. 객체 단위 파싱은 섞이지 않는다.
+  const stream =
+    'self.__next_f.push([1,"...' +
+    '{\\"href\\":\\"/kr/buy-sell/5단-메탈-선반-aaa111bbb222/\\",\\"title\\":\\"5단 메탈 선반\\",\\"price\\":\\"5000\\",\\"thumbnail\\":\\"https://img/x.webp\\",\\"status\\":\\"Closed\\",\\"createdAt\\":\\"2026-10-01T00:00:00.000Z\\",\\"region\\":{\\"name\\":\\"매탄동\\"}},' +
+    '{\\"href\\":\\"/kr/buy-sell/새-메탈-선반-ccc333dd444/\\",\\"title\\":\\"새 메탈 선반\\",\\"price\\":\\"9000\\",\\"thumbnail\\":\\"https://img/y.webp\\",\\"status\\":\\"Ongoing\\",\\"createdAt\\":\\"2026-10-08T00:00:00.000Z\\",\\"region\\":{\\"name\\":\\"영통동\\"}}' +
+    '..."])';
+  const items = parseDaangn(stream);
+  const closed = items.find((i) => i.id === 'aaa111bbb222');
+  const open = items.find((i) => i.id === 'ccc333dd444');
+  assert.ok(closed && open, '두 매물 모두 파싱되어야 한다');
+  assert.equal(closed.status, 'Closed');
+  assert.equal(closed.publishedAt, '2026-10-01T00:00:00.000Z'); // 이웃(10-08) 값이 섞이지 않음
+  assert.equal(closed.region, '매탄동');
+  assert.equal(open.status, 'Ongoing');
+  assert.equal(open.publishedAt, '2026-10-08T00:00:00.000Z');
+  // 거래완료는 매칭에서 제외, 판매중은 통과
+  const watch = { keyword: '선반', location: '수원시', maxPrice: 100000 };
+  assert.equal(matchesWatch(closed, watch), false);
+  assert.equal(matchesWatch(open, watch), true);
+});
+
+test('동네명 부분일치 오탐을 막는다(인천 부평동 ≠ 수원 평동)', () => {
+  const w = { keyword: '메탈선반', location: '수원시' };
+  const mk = (region) => ({ title: '5단 메탈 선반', region, status: 'Ongoing', priceValue: 5000 });
+  // 수원 권선구의 '평동'이 인천 '부평동'에 부분일치해 수원으로 오매칭되던 문제
+  assert.equal(matchesWatch(mk('부평동'), w), false);
+  // 진짜 수원 동네는 그대로 매칭
+  assert.equal(matchesWatch(mk('평동'), w), true); // 수원 권선구 평동
+  assert.equal(matchesWatch(mk('영통동'), w), true);
+  assert.equal(matchesWatch(mk('매탄3동'), w), true); // 행정동 표기도 매칭
+  assert.equal(matchesWatch(mk('서초동'), w), false); // 서울은 제외
 });
 
 test('describeMaxAge 는 시간/일 조건 문구를 만든다', () => {
