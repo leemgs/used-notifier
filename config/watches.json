@@ -142,6 +142,17 @@
       "maxAgeDays": 1,
       "email": "leemgs@gmail.com",
       "enabled": false
+    },
+    {
+      "id": "욕실매트-수원시",
+      "keyword": "욕실매트",
+      "location": "수원시",
+      "sites": [
+        "daangn"
+      ],
+      "maxAgeDays": 1,
+      "email": "leemgs@gmail.com",
+      "enabled": true
     }
   ]
 }
