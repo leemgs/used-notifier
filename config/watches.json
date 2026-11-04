@@ -117,7 +117,7 @@
       "maxPrice": 50000,
       "maxAgeDays": 1,
       "email": "leemgs@gmail.com",
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "낚시대-수원시",
@@ -144,8 +144,8 @@
       "enabled": false
     },
     {
-      "id": "욕실매트-수원시",
-      "keyword": "욕실매트",
+      "id": "미끄럼방지매트-수원시",
+      "keyword": "미끄럼방지매트",
       "location": "수원시",
       "sites": [
         "daangn"
