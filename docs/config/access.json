@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "algorithm": "SHA-256",
+  "digests": [
+    "af36ce4dfe30e46821f11b640e9cc2d178a9c04a66f0d18cb21273358abeefaa",
+    "a05f757677aa59387f11e957a42ed160dfab5539f7ce9f968daa66b7a29c0950"
+  ],
+  "note": "digests = 각 접속 코드의 SHA-256 해시 목록(평문 코드는 저장하지 않음). 초기 접속 코드 2개의 해시이며 운영 시 변경을 권장합니다. 코드 변경 방법은 README의 '접속 코드 변경 방법' 참고."
+}
