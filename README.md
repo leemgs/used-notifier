@@ -369,6 +369,26 @@ Gmail SMTP 로 이메일 발송이 실패하면(예: `GMAIL_APP_PASSWORD` 미등
 저장소 **Settings → Pages → Source** 를 `main` 브랜치 `/docs` 폴더로 지정하면
 `https://<사용자>.github.io/used-notifier/` 에서 홈페이지가 열립니다.
 
+### 5. 홈페이지 접속 코드 (간단 접근 제한)
+홈페이지는 초대받은 사용자를 위한 정보 공간이라, 모든 페이지에 **접속 코드 게이트**가 걸려 있습니다.
+
+- 구현: [`docs/assets/site.js`](docs/assets/site.js) 의 `initAuth()` / `unlock()`
+- 설정: [`docs/config/access.json`](docs/config/access.json) 에 접속 코드의 **SHA-256 해시(`digests`)만** 저장합니다(평문 코드는 저장하지 않음).
+- 동작: 입력한 코드를 브라우저에서 SHA-256으로 해시해 `digests` 중 하나와 일치하면 `sessionStorage` 에 접근 허용 상태를 기록하고 페이지를 보여줍니다. 탭/브라우저를 닫으면 다시 입력해야 합니다.
+- 초기 접속 코드 2개가 설정돼 있습니다(평문은 저장소에 두지 않으므로 관리자에게 문의). 운영 시에는 아래 방법으로 변경하세요.
+
+> ⚠️ 정적 사이트의 **간단한 접근 제한**이며 민감정보 보호 목적이 아닙니다. 해시가 클라이언트에 노출되므로 진짜 보안 경계로 사용하지 마세요.
+
+#### 접속 코드 변경 방법
+1. 새 코드를 정합니다.
+2. SHA-256 해시를 계산합니다.
+   ```bash
+   node -e "const c=require('crypto');console.log(c.createHash('sha256').update('새코드').digest('hex'))"
+   ```
+3. `docs/config/access.json` 의 `digests` 값을 교체하고 `version` 을 올립니다.
+   - `digests` 는 배열이라 코드를 여러 개 둘 수 있습니다(추가/삭제 가능).
+   - `version` 을 올리면 이전에 입력해 둔 모든 방문자의 접근 허용 상태가 무효화되어 새 코드를 다시 입력해야 합니다.
+
 ---
 
 ## 로컬 테스트
