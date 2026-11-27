@@ -47,20 +47,28 @@
     }
   }
 
+  // gate-pending: 내용만 숨김(코드 입력창은 아직 안 띄움) — 저장된 세션의 version 확인 중.
+  // gate-locked : 내용 숨김 + 코드 입력창 표시.
+  function pend() {
+    document.documentElement.classList.add('gate-pending');
+  }
   function lock() {
+    document.documentElement.classList.remove('gate-pending');
     document.documentElement.classList.add('gate-locked');
   }
   function reveal() {
-    document.documentElement.classList.remove('gate-locked');
+    document.documentElement.classList.remove('gate-pending', 'gate-locked');
   }
 
-  // 내용이 잠깐 보였다 가려지는 깜빡임을 막기 위해, 저장된 허용 상태가 없으면
-  // 스크립트 로드 시점(문서 파싱 전)에 즉시 스타일을 주입하고 잠근다.
-  // 이미 허용된 세션은 그대로 둔다(initAuth 에서 version 을 재확인).
+  // 내용이 잠깐 보였다 가려지는 깜빡임을 막기 위해 스크립트 로드 시점(문서 파싱 전)에
+  // 즉시 스타일을 주입하고 내용을 숨긴다. 저장된 세션이 없으면 바로 입력창(lock),
+  // 있으면 version 확인이 끝날 때까지 내용만 숨긴다(pend). 코드를 교체(version 변경)한
+  // 뒤에도 옛 세션이 확인 전 내용을 엿보지 못하게 하기 위함이다.
   (function lockEarly() {
     injectStyles();
     const s = readSession();
-    if (!(s && s.ok)) lock();
+    if (s && s.ok) pend(); // 허용 세션이라도 version 확인 전에는 내용을 보여주지 않는다
+    else lock();
   })();
 
   // 게이트 전용 스타일을 주입한다(style.css 의존 없이 자체 완결).
@@ -68,7 +76,8 @@
     if (document.getElementById('site-gate-style')) return;
     const css = `
       html.gate-locked body { overflow: hidden; }
-      html.gate-locked body > *:not(#site-gate) { visibility: hidden !important; }
+      html.gate-locked body > *:not(#site-gate),
+      html.gate-pending body > *:not(#site-gate) { visibility: hidden !important; }
       #site-gate { display: none; }
       html.gate-locked #site-gate { display: flex; }
       #site-gate {
@@ -194,7 +203,14 @@
 
   async function loadConfig() {
     // 코드 교체(version 변경)가 즉시 반영되도록 캐시를 쓰지 않는다.
-    const res = await fetch(CONFIG_URL, { cache: 'no-store' });
+    const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), 8000) : null;
+    let res;
+    try {
+      res = await fetch(CONFIG_URL, { cache: 'no-store', signal: ctrl ? ctrl.signal : undefined });
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
     if (!res.ok) throw new Error('접속 설정을 불러오지 못했습니다: HTTP ' + res.status);
     return res.json();
   }
@@ -212,7 +228,10 @@
       return;
     }
     const s = readSession();
-    if (s && s.ok && s.v === config.version) {
+    // version 이 정의돼 있고 허용 해시가 하나라도 있을 때만 기존 세션을 인정한다.
+    // (version 누락 시 위조 세션 {ok:true} 의 undefined === undefined 로 통과되는 것을 방지)
+    const configUsable = config && config.version != null && allowedDigests(config).length > 0;
+    if (configUsable && s && s.ok && s.v === config.version) {
       reveal(); // 이미 이 버전으로 허용됨
       return;
     }
